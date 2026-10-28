@@ -1,6 +1,6 @@
 
 ; Rise of Conquest
-; Godot Project Configuration
+; Android Landscape Configuration
 
 config_version=5
 
@@ -18,8 +18,10 @@ config/features=PackedStringArray("4.4", "GL Compatibility")
 
 window/size/viewport_width=1280
 window/size/viewport_height=720
+window/size/window_width_override=1280
+window/size/window_height_override=720
 window/stretch/mode="canvas_items"
-window/handheld/orientation=1
+window/handheld/orientation=0
 
 [input]
 
