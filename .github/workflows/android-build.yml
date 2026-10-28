@@ -1,11 +1,18 @@
 
-name: Build Android APK
+name: Build and Publish Rise of Conquest APK
 
 on:
   workflow_dispatch:
   push:
     branches:
       - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rise-of-conquest-release
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -218,3 +225,18 @@ jobs:
           path: build/RiseOfConquest.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish APK to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -e
+          TAG="build-${GITHUB_RUN_NUMBER}"
+
+          gh release create "$TAG" \
+            build/RiseOfConquest.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Rise of Conquest 1.3 - Build ${GITHUB_RUN_NUMBER}" \
+            --notes "Android APK - OnePlus Pad 3 test surumu. Mobil kamera ve arayuz gelistirmeleri."
