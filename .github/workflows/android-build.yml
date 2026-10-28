@@ -104,6 +104,7 @@ jobs:
           package/signed=true
           architectures/armeabi-v7a=false
           architectures/arm64-v8a=true
+          launcher_icons/main_192x192="res://file_0000000091f081f48ada402c4cd638df.png"
           EOF
 
       - name: Import Godot project
