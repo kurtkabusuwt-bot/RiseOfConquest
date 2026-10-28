@@ -29,7 +29,7 @@ jobs:
           BASE="https://github.com/godotengine/godot/releases/download/${VERSION}-stable"
 
           wget -q "${BASE}/Godot_v${VERSION}-stable_linux.x86_64.zip"
-          unzip -q "Godot_v${VERSION}-stable_linux.x86_64.zip"
+          unzip -q "Godot_v${VERSION}-stable_linux.x86_64"
           sudo install -m 755 "Godot_v${VERSION}-stable_linux.x86_64" /usr/local/bin/godot
 
           wget -q "${BASE}/Godot_v${VERSION}-stable_export_templates.tpz"
@@ -104,7 +104,7 @@ jobs:
           package/signed=true
           architectures/armeabi-v7a=false
           architectures/arm64-v8a=true
-          launcher_icons/main_192x192="res://file_0000000091f081f48ada402c4cd638df.png"
+          launcher_icons/main_192x192="res://file_00000000c90882439a56ebc361859e8f.png"
           EOF
 
       - name: Import Godot project
