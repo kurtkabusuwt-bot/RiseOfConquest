@@ -1,0 +1,15 @@
+
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://main.gd" id="1"]
+[ext_resource type="Script" path="res://conquest_14.gd" id="2"]
+[ext_resource type="Script" path="res://conquest_15.gd" id="3"]
+
+[node name="RiseOfConquest" type="Node3D"]
+script = ExtResource("1")
+
+[node name="ConquestExpansion" type="Node" parent="."]
+script = ExtResource("2")
+
+[node name="ConquestInterface15" type="CanvasLayer" parent="."]
+script = ExtResource("3")
