@@ -1,6 +1,5 @@
 
 ; Rise of Conquest
-; Android Landscape Configuration
 
 config_version=5
 
@@ -13,7 +12,7 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 config/name="Rise of Conquest"
 run/main_scene="res://main.tscn"
 config/features=PackedStringArray("4.4", "GL Compatibility")
-config/icon="res://file_0000000091f081f48ada402c4cd638df.png"
+config/icon="res://file_00000000c90882439a56ebc361859e8f.png"
 
 [display]
 
