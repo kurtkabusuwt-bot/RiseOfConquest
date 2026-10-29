@@ -8,7 +8,7 @@
 [ext_resource type="Script" path="res://city_upgrade_30.gd" id="5"]
 [ext_resource type="Script" path="res://army_upgrade_30.gd" id="6"]
 [ext_resource type="Script" path="res://war_conquest_31.gd" id="7"]
-[ext_resource type="Script" path="res://war_ui_fix_31.gd" id="8"]
+[ext_resource type="Script" path="res://war_expansion_45.gd" id="8"]
 
 [node name="RiseOfConquest" type="Node3D"]
 script = ExtResource("1")
@@ -31,5 +31,5 @@ script = ExtResource("6")
 [node name="WarConquest31" type="Node3D" parent="."]
 script = ExtResource("7")
 
-[node name="WarUIFix31" type="Node" parent="."]
+[node name="WarExpansion45" type="Node" parent="."]
 script = ExtResource("8")
