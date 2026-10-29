@@ -1,65 +1,60 @@
 
 extends Node
 
-# Rise of Conquest 3.1 - War interface recovery
-
 var war: Node
 var status: Label
-var open_button: Button
 
 func _ready() -> void:
 	call_deferred("setup")
 
 func setup() -> void:
-	var game := get_tree().current_scene
-	if game == null:
-		return
-
-	war = game.get_node_or_null("WarConquest31")
-
 	var canvas := CanvasLayer.new()
 	canvas.layer = 100
 	add_child(canvas)
 
-	open_button = Button.new()
-	open_button.text = "SAVAS 3.1"
-	open_button.position = Vector2(170, 100)
-	open_button.custom_minimum_size = Vector2(155, 46)
-	canvas.add_child(open_button)
-	open_button.pressed.connect(open_war)
+	var button := Button.new()
+	button.text = "SAVAS TEST"
+	button.position = Vector2(170, 100)
+	button.custom_minimum_size = Vector2(155, 46)
+	canvas.add_child(button)
+	button.pressed.connect(diagnose)
 
 	status = Label.new()
 	status.position = Vector2(170, 150)
 	status.add_theme_color_override(
 		"font_color",
-		Color(1.0, 0.9, 0.4)
+		Color(1.0, 0.9, 0.3)
 	)
 	canvas.add_child(status)
 
-	if war == null:
-		status.text = "HATA: WarConquest31 bulunamadi."
-	else:
-		status.text = "Savas modulu baglandi."
+	diagnose()
 
-func open_war() -> void:
-	if war == null:
-		status.text = "HATA: Savas dugumu yok."
+func diagnose() -> void:
+	var scene := get_tree().current_scene
+	if scene == null:
+		status.text = "HATA 1: Ana sahne yok."
 		return
 
-	var existing_panel: Variant = war.get("panel")
+	war = scene.get_node_or_null("WarConquest31")
+	if war == null:
+		status.text = "HATA 2: Savas dugumu yok."
+		return
 
-	if not (existing_panel is PanelContainer):
-		if war.has_method("build_ui"):
-			war.call("build_ui")
+	if war.get_script() == null:
+		status.text = "HATA 3: Savas kodu yuklenemedi."
+		return
 
-	var current_panel: Variant = war.get("panel")
+	if not war.has_method("build_ui"):
+		status.text = "HATA 4: Savas fonksiyonlari yok."
+		return
 
-	if current_panel is PanelContainer:
-		current_panel.visible = not current_panel.visible
+	if war.get("expansion") == null:
+		status.text = "HATA 5: Ordu baglantisi yok."
+		return
 
-		if war.has_method("update_panel"):
-			war.call("update_panel")
-
-		status.text = "Savas paneli hazir."
+	var war_panel: Variant = war.get("panel")
+	if war_panel is PanelContainer:
+		war_panel.visible = not war_panel.visible
+		status.text = "SAVAS PANELI HAZIR."
 	else:
-		status.text = "HATA: Panel olusturulamadi."
+		status.text = "HATA 6: Panel olusturulmamis."
