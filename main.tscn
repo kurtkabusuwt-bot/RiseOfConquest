@@ -1,7 +1,7 @@
 
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=11 format=3]
 
-[ext_resource type="Script" path="res://main.gd" id="1"]
+[ext_resource type="Script" path="res://main_extended_60.gd" id="1"]
 [ext_resource type="Script" path="res://conquest_14.gd" id="2"]
 [ext_resource type="Script" path="res://conquest_15.gd" id="3"]
 [ext_resource type="Script" path="res://conquest_20.gd" id="4"]
