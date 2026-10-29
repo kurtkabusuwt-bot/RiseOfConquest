@@ -1,9 +1,9 @@
 
 extends Node3D
 
-# RISE OF CONQUEST 2.0
-# 3D army camp, patrols, banners, torches and battle effects.
-# Existing 1.4 and 1.5 gameplay and saves are preserved.
+# RISE OF CONQUEST 3.0
+# Army camp, patrols, banners, torches and victory effects.
+# Existing gameplay and saves remain unchanged.
 
 var expansion: Node
 var game: Node3D
@@ -14,8 +14,7 @@ var fires: Array[OmniLight3D] = []
 var particles: Array[Node3D] = []
 var clock := 0.0
 var last_victories := 0
-var last_power := -1
-var troop_count := 0
+var troop_count := -1
 var troop_timer := 0.0
 var effect_timer := 0.0
 
@@ -33,7 +32,7 @@ func initialize() -> void:
 	camp = Node3D.new()
 	camp.name = "RoyalArmyCamp20"
 	game.add_child(camp)
-	camp.position = Vector3(12, 0, -12)
+	camp.position = Vector3(10, 0, 5)
 
 	create_camp()
 	create_patrols()
@@ -162,7 +161,7 @@ func create_soldier(pos: Vector3, archer: bool = false) -> Node3D:
 
 	cube(soldier, "Body", Vector3(0.55, 0.8, 0.35), Vector3(0, 1.15, 0), armor)
 	sphere(soldier, "Head", 0.25, Vector3(0, 1.85, 0), Color(0.73, 0.53, 0.37))
-	cylinder(soldier, "Helmet", 0.27, 0.25, Vector3(0, 2.03, 0), Color(0.45, 0.47, 0.49), 0.0)
+	cylinder(soldier, "Helmet", 0.27, 0.25, Vector3(0, 2.03, 0), Color(0.45, 0.47, 0.49))
 	cube(soldier, "LeftLeg", Vector3(0.18, 0.65, 0.20), Vector3(-0.16, 0.42, 0), armor)
 	cube(soldier, "RightLeg", Vector3(0.18, 0.65, 0.20), Vector3(0.16, 0.42, 0), armor)
 	cube(soldier, "LeftArm", Vector3(0.17, 0.65, 0.19), Vector3(-0.37, 1.18, 0), armor)
