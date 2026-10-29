@@ -1,13 +1,8 @@
 
 extends Node3D
 
-# RISE OF CONQUEST 3.1
-# PACKAGE 3: WAR AND CONQUEST
-# Independent battle system; existing saves remain intact.
-
 const SAVE_PATH := "user://roc_war_31.json"
 const TYPES := ["infantry", "archers", "cavalry", "assassin", "siege"]
-const NAMES := ["PIYADE", "OKCU", "SUVARI", "SUIKASTCI", "KUSATMA"]
 const FORMATIONS := ["HAT", "KARE", "KAMA"]
 const BASE_POWER := [10, 15, 30, 42, 55]
 
@@ -84,13 +79,13 @@ func army_count(kind: String) -> int:
 func total_army() -> int:
 	var total := 0
 	for kind in TYPES:
-		total += army_count(kind)
+		total += army_count(str(kind))
 	return total
 
 func army_power() -> int:
 	var power := 0
 	for i in range(TYPES.size()):
-		power += army_count(TYPES[i]) * BASE_POWER[i]
+		power += army_count(str(TYPES[i])) * int(BASE_POWER[i])
 
 	power += int(expansion.get("castle_level")) * 5
 
@@ -112,7 +107,7 @@ func train_special(kind: String) -> void:
 		return
 
 	var castle := int(expansion.get("castle_level"))
-	var cost := {}
+	var cost: Dictionary = {}
 
 	if int(game.get("barracks_count")) <= 0:
 		last_report = "Once kisla insa et."
@@ -204,7 +199,7 @@ func build_battlefield() -> void:
 
 	for side in [-1.0, 1.0]:
 		for i in range(5):
-			var x := side * 17.0
+			var x: float = float(side) * 17.0
 			var z := -11.0 + i * 5.4
 			add_cylinder(
 				battlefield,
@@ -232,7 +227,6 @@ func build_battlefield() -> void:
 	battle_camera.look_at(Vector3(0, 0, 0))
 	battle_camera.fov = 65
 	battle_camera.current = false
-
 	battlefield.visible = false
 
 func create_fighter(kind: String, friendly: bool) -> Node3D:
@@ -298,7 +292,7 @@ func deploy_armies() -> void:
 
 	var visible_limit := 20
 	for i in range(TYPES.size()):
-		var kind := TYPES[i]
+		var kind: String = str(TYPES[i])
 		var count := mini(army_count(kind), visible_limit)
 		for j in range(count):
 			var fighter := create_fighter(kind, true)
@@ -306,7 +300,7 @@ func deploy_armies() -> void:
 		visible_limit -= count
 
 	for i in range(16):
-		var enemy_kind := TYPES[i % 4]
+		var enemy_kind: String = str(TYPES[i % 4])
 		var fighter := create_fighter(enemy_kind, false)
 		enemy_units.append(fighter)
 
@@ -382,25 +376,26 @@ func begin_battle() -> void:
 	update_panel()
 
 func apply_losses(victory: bool) -> String:
-	var losses := []
+	var losses: Array[String] = []
 	var divisor := 16 if victory else 7
 
 	for kind in TYPES:
-		var count := army_count(kind)
+		var unit_kind: String = str(kind)
+		var count := army_count(unit_kind)
 		var lost := mini(count, int(ceil(float(count) / float(divisor))))
 		if lost <= 0:
 			continue
 
-		if extra_army.has(kind):
-			extra_army[kind] = maxi(0, count - lost)
+		if extra_army.has(unit_kind):
+			extra_army[unit_kind] = maxi(0, count - lost)
 		else:
-			expansion.set(kind, maxi(0, count - lost))
+			expansion.set(unit_kind, maxi(0, count - lost))
 
-		losses.append(kind + ": -" + str(lost))
+		losses.append(unit_kind + ": -" + str(lost))
 
 	if losses.is_empty():
 		return "Kayip yok."
-	return ", ".join(losses)
+	return ", ".join(PackedStringArray(losses))
 
 func finish_battle() -> void:
 	fighting = false
