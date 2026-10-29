@@ -1,12 +1,12 @@
 
 extends "res://main.gd"
 
-# RISE OF CONQUEST - EXTENDED MAIN 6.0
-# Godot 4.4.1 / Android
-# Keeps all original game systems and saves.
+# RISE OF CONQUEST
+# CITY BUILD FIX 6.1
+# Godot 4.4.1
 
-const EXPANDED_BUILD_LIMIT := 43.0
-const EXPANDED_CAMERA_MAX := 125.0
+const BUILD_LIMIT_61 := 47.0
+const CAMERA_MAX_61 := 125.0
 
 func zoom_camera(delta: float) -> void:
 	if world_mode:
@@ -19,53 +19,37 @@ func zoom_camera(delta: float) -> void:
 		camera_distance = clampf(
 			camera_distance + delta,
 			12.0,
-			EXPANDED_CAMERA_MAX
+			CAMERA_MAX_61
 		)
 	update_camera()
 
 func handle_ground_tap(screen_pos: Vector2) -> void:
-	if (
-		not world_mode
-		and not placing
-		and not ruler_mode
-		and not battle_active
-	):
+	if not world_mode and not placing and not ruler_mode and not battle_active:
 		return
 
-	var ray_origin := camera.project_ray_origin(
-		screen_pos
-	)
-	var ray_direction := camera.project_ray_normal(
-		screen_pos
-	)
+	var ray_origin := camera.project_ray_origin(screen_pos)
+	var ray_direction := camera.project_ray_normal(screen_pos)
 
 	if absf(ray_direction.y) < 0.0001:
 		return
 
-	var t := -ray_origin.y / ray_direction.y
-
-	if t <= 0.0:
+	var distance := -ray_origin.y / ray_direction.y
+	if distance <= 0.0:
 		return
 
-	var hit := ray_origin + ray_direction * t
+	var hit := ray_origin + ray_direction * distance
 
 	if world_mode:
 		world_tap(hit)
 		return
 
 	if battle_active and not placing and not ruler_mode:
-		if (
-			hit.x > -13.0
-			and hit.x < -3.0
-			and hit.z > 3.5
-			and hit.z < 12.5
-		):
+		if hit.x > -13.0 and hit.x < -3.0 and hit.z > 3.5 and hit.z < 12.5:
 			var best := -1
 			var best_dist := 2.1
 
 			for j in range(3, battle_units.size()):
 				var enemy: Dictionary = battle_units[j]
-
 				if enemy["hp"] <= 0.0:
 					continue
 
@@ -80,21 +64,18 @@ func handle_ground_tap(screen_pos: Vector2) -> void:
 
 			if best >= 0:
 				selected_target = best
-				status = (
-					"Dusman hedefi secildi: %d"
-					% (best - 2)
-				)
+				status = "Dusman hedefi secildi: %d" % (best - 2)
 			else:
 				status = "Kirmizi askere dokun."
 
 			update_ui()
 		return
 
-	if (
-		absf(hit.x) > EXPANDED_BUILD_LIMIT
-		or absf(hit.z) > EXPANDED_BUILD_LIMIT
-	):
-		status = "Sehir sinirinin disindasin."
+	# Expanded construction boundaries.
+	if absf(hit.x) > BUILD_LIMIT_61 or absf(hit.z) > BUILD_LIMIT_61:
+		status = "6.1 SINIR | X: %.1f Z: %.1f" % [
+			hit.x, hit.z
+		]
 		update_ui()
 		return
 
@@ -110,14 +91,10 @@ func handle_ground_tap(screen_pos: Vector2) -> void:
 		roundi(hit.z)
 	)
 
-	var min_distance := 4.0
-	if selected_building != "Ev":
-		min_distance = 4.5
+	var min_distance := 4.0 if selected_building == "Ev" else 4.5
 
 	for cell in occupied:
-		if Vector2(grid_pos).distance_to(
-			Vector2(cell)
-		) < min_distance:
+		if Vector2(grid_pos).distance_to(Vector2(cell)) < min_distance:
 			status = "Burası dolu. Baska yer sec."
 			update_ui()
 			return
@@ -136,19 +113,12 @@ func handle_ground_tap(screen_pos: Vector2) -> void:
 			return
 		woods -= 200
 
-	elif (
-		selected_building == "Çiftlik"
-		or selected_building == "Taşocağı"
-	):
-		var cost := 80
-		if selected_building == "Taşocağı":
-			cost = 100
-
+	elif selected_building == "Çiftlik" or selected_building == "Taşocağı":
+		var cost := 80 if selected_building == "Çiftlik" else 100
 		if woods < cost:
 			status = "Yeterli odun yok."
 			update_ui()
 			return
-
 		woods -= cost
 
 	elif selected_building == "Kereste":
@@ -181,5 +151,10 @@ func handle_ground_tap(screen_pos: Vector2) -> void:
 	})
 
 	save_game(false)
-	status = "%s insa edildi!" % selected_building
+
+	status = "6.1 BASARILI | %s | X:%d Z:%d" % [
+		selected_building,
+		grid_pos.x,
+		grid_pos.y
+	]
 	update_ui()
