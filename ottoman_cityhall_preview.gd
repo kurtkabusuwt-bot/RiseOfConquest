@@ -2,125 +2,181 @@
 extends Node3D
 
 # RISE OF CONQUEST
-# OTTOMAN CITY HALL - TEST 1.0
+# OTTOMAN CITY HALL - ORIGINAL QUALITY
 # Godot 4.4.1
+# 8 GLB parts, original geometry preserved
 
-const CITY_HALL = preload(
-	"res://ottoman_cityhall_preview.glb"
-)
-
+const PART_COUNT: int = 8
 const TARGET_WIDTH: float = 7.0
 
 var game: Node3D
-var model: Node3D
+var building_holder: Node3D
 var old_center: Node3D
 var old_decorations: Node3D
+var loaded_parts: int = 0
+
 
 func _ready() -> void:
-	call_deferred("setup")
+    call_deferred("setup_city_hall")
 
-func setup() -> void:
-	game = get_parent() as Node3D
-	if game == null:
-		return
 
-	var instance = CITY_HALL.instantiate()
-	if not (instance is Node3D):
-		push_error("Osmanli 3D modeli acilamadi.")
-		return
+func setup_city_hall() -> void:
+    game = get_parent() as Node3D
 
-	model = instance as Node3D
-	model.name = "OttomanCityHall"
-	add_child(model)
+    if game == null:
+        push_error("Game root not found.")
+        return
 
-	adjust_model()
-	hide_original_building()
+    building_holder = Node3D.new()
+    building_holder.name = "OttomanCityHallOriginal"
+    add_child(building_holder)
 
-func adjust_model() -> void:
-	var bounds := calculate_bounds(model)
+    for part_number in range(1, PART_COUNT + 1):
+        var path: String = (
+            "res://ottoman_cityhall_part_%02d.glb"
+            % part_number
+        )
 
-	if bounds.size.length() < 0.001:
-		push_warning("Model boyutlari okunamadi.")
-		return
+        var resource: Resource = load(path)
 
-	var horizontal_size: float = maxf(
-		bounds.size.x,
-		bounds.size.z
-	)
+        if not (resource is PackedScene):
+            push_error("GLB part cannot load: " + path)
+            continue
 
-	if horizontal_size <= 0.001:
-		return
+        var part: Node = (
+            resource as PackedScene
+        ).instantiate()
 
-	var scale_factor: float = \
-		TARGET_WIDTH / horizontal_size
+        if not (part is Node3D):
+            push_error("Invalid GLB part: " + path)
+            part.queue_free()
+            continue
 
-	model.scale = Vector3.ONE * scale_factor
+        part.name = "CityHallPart_%02d" % part_number
+        building_holder.add_child(part)
 
-	var center: Vector3 = bounds.get_center()
+        loaded_parts += 1
 
-	model.position = Vector3(
-		-center.x * scale_factor,
-		-bounds.position.y * scale_factor,
-		-center.z * scale_factor
-	)
+    if loaded_parts != PART_COUNT:
+        push_error(
+            "Missing city hall parts: %d / %d"
+            % [loaded_parts, PART_COUNT]
+        )
+
+        building_holder.queue_free()
+        building_holder = null
+        return
+
+    adjust_building()
+    hide_old_city_hall()
+
+    print(
+        "Ottoman City Hall loaded: %d parts"
+        % loaded_parts
+    )
+
+
+func adjust_building() -> void:
+    var bounds: AABB = calculate_bounds(
+        building_holder
+    )
+
+    if bounds.size.length() < 0.001:
+        push_error("City hall bounds are empty.")
+        return
+
+    var horizontal_size: float = maxf(
+        bounds.size.x,
+        bounds.size.z
+    )
+
+    if horizontal_size <= 0.001:
+        return
+
+    var factor: float = (
+        TARGET_WIDTH / horizontal_size
+    )
+
+    var center: Vector3 = bounds.get_center()
+
+    building_holder.scale = (
+        Vector3.ONE * factor
+    )
+
+    building_holder.position = Vector3(
+        -center.x * factor,
+        -bounds.position.y * factor,
+        -center.z * factor
+    )
+
 
 func calculate_bounds(root: Node3D) -> AABB:
-	var stack: Array[Node] = [root]
-	var found: bool = false
-	var bounds := AABB()
+    var stack: Array[Node] = [root]
+    var found: bool = false
+    var result: AABB = AABB()
 
-	while not stack.is_empty():
-		var node: Node = stack.pop_back()
+    while not stack.is_empty():
+        var current: Node = stack.pop_back()
 
-		if node is MeshInstance3D:
-			var mesh_node := node as MeshInstance3D
+        if current is MeshInstance3D:
+            var mesh_instance: MeshInstance3D = (
+                current as MeshInstance3D
+            )
 
-			if mesh_node.mesh != null:
-				var relative_transform: Transform3D = \
-					root.global_transform.affine_inverse() \
-					* mesh_node.global_transform
+            if mesh_instance.mesh != null:
+                var relative: Transform3D = (
+                    root.global_transform.affine_inverse()
+                    * mesh_instance.global_transform
+                )
 
-				var part_bounds: AABB = \
-					relative_transform * mesh_node.get_aabb()
+                var mesh_bounds: AABB = (
+                    relative * mesh_instance.get_aabb()
+                )
 
-				if not found:
-					bounds = part_bounds
-					found = true
-				else:
-					bounds = bounds.merge(part_bounds)
+                if not found:
+                    result = mesh_bounds
+                    found = true
+                else:
+                    result = result.merge(mesh_bounds)
 
-		for child in node.get_children():
-			stack.append(child)
+        for child in current.get_children():
+            stack.append(child)
 
-	return bounds
+    return result
 
-func hide_original_building() -> void:
-	old_center = game.get_node_or_null(
-		"Merkez"
-	) as Node3D
 
-	if old_center != null:
-		old_center.visible = false
+func hide_old_city_hall() -> void:
+    old_center = game.get_node_or_null(
+        "Merkez"
+    ) as Node3D
 
-	old_decorations = game.get_node_or_null(
-		"CityUpgrade30/CityDecorations30/CastleUpgrades"
-	) as Node3D
+    old_decorations = game.get_node_or_null(
+        "CityUpgrade30/CityDecorations30/CastleUpgrades"
+    ) as Node3D
 
-	if old_decorations != null:
-		old_decorations.visible = false
+    if is_instance_valid(old_center):
+        old_center.visible = false
+
+    if is_instance_valid(old_decorations):
+        old_decorations.visible = false
+
 
 func _process(_delta: float) -> void:
-	if is_instance_valid(old_center):
-		if old_center.visible:
-			old_center.visible = false
+    if loaded_parts != PART_COUNT:
+        return
 
-	if is_instance_valid(old_decorations):
-		if old_decorations.visible:
-			old_decorations.visible = false
+    if is_instance_valid(old_center):
+        if old_center.visible:
+            old_center.visible = false
+
+    if is_instance_valid(old_decorations):
+        if old_decorations.visible:
+            old_decorations.visible = false
+
 
 func _exit_tree() -> void:
-	if is_instance_valid(old_center):
-		old_center.visible = true
+    if is_instance_valid(old_center):
+        old_center.visible = true
 
-	if is_instance_valid(old_decorations):
-		old_decorations.visible = true
+    if is_instance_valid(old_decorations):
+        old_decorations.visible = true
