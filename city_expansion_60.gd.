@@ -1,0 +1,155 @@
+
+extends Node3D
+
+# RISE OF CONQUEST - CITY EXPANSION 6.0
+# Godot 4.4.1 / Android
+
+const CITY_SIZE := 100.0
+
+var district: Node3D
+
+func _ready() -> void:
+	call_deferred("build_city")
+
+func build_city() -> void:
+	district = Node3D.new()
+	district.name = "OuterCityDistrict60"
+	add_child(district)
+
+	create_ground()
+	create_roads()
+	create_trees()
+	create_border()
+
+func make_box(
+	parent: Node3D,
+	pos: Vector3,
+	size: Vector3,
+	color: Color
+) -> MeshInstance3D:
+	var node := MeshInstance3D.new()
+	var mesh := BoxMesh.new()
+	mesh.size = size
+	node.mesh = mesh
+	node.position = pos
+
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.roughness = 0.94
+	node.material_override = mat
+
+	parent.add_child(node)
+	return node
+
+func create_ground() -> void:
+	make_box(
+		district,
+		Vector3(0, -0.19, 0),
+		Vector3(CITY_SIZE, 0.35, CITY_SIZE),
+		Color(0.44, 0.56, 0.37)
+	)
+
+func create_roads() -> void:
+	var road := Color(0.69, 0.61, 0.46)
+
+	for x in [-30.0, 30.0]:
+		make_box(
+			district,
+			Vector3(x, 0.015, 0),
+			Vector3(2.5, 0.035, 86.0),
+			road
+		)
+
+	for z in [-30.0, 30.0]:
+		make_box(
+			district,
+			Vector3(0, 0.015, z),
+			Vector3(86.0, 0.035, 2.5),
+			road
+		)
+
+	# Roads connecting the old city.
+	for side in [-1.0, 1.0]:
+		make_box(
+			district,
+			Vector3(side * 24.0, 0.02, 6),
+			Vector3(12, 0.04, 2),
+			road
+		)
+
+		make_box(
+			district,
+			Vector3(6, 0.02, side * 24.0),
+			Vector3(2, 0.04, 12),
+			road
+		)
+
+func create_trees() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 602026
+
+	for i in range(32):
+		var x := rng.randf_range(-46.0, 46.0)
+		var z := rng.randf_range(-46.0, 46.0)
+
+		if absf(x) < 20.0 and absf(z) < 20.0:
+			continue
+
+		if absf(absf(x) - 30.0) < 4.0:
+			continue
+
+		if absf(absf(z) - 30.0) < 4.0:
+			continue
+
+		# Keep most terrain clear for construction.
+		if i % 2 == 0:
+			continue
+
+		make_tree(Vector3(x, 0, z))
+
+func make_tree(pos: Vector3) -> void:
+	var trunk := MeshInstance3D.new()
+	var cylinder := CylinderMesh.new()
+	cylinder.top_radius = 0.14
+	cylinder.bottom_radius = 0.23
+	cylinder.height = 1.8
+	trunk.mesh = cylinder
+	trunk.position = pos + Vector3(0, 0.9, 0)
+
+	var wood := StandardMaterial3D.new()
+	wood.albedo_color = Color(0.35, 0.23, 0.13)
+	trunk.material_override = wood
+	district.add_child(trunk)
+
+	var leaves := MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radius = 1.2
+	sphere.height = 2.4
+	leaves.mesh = sphere
+	leaves.position = pos + Vector3(0, 2.45, 0)
+
+	var green := StandardMaterial3D.new()
+	green.albedo_color = Color(0.22, 0.38, 0.20)
+	leaves.material_override = green
+	district.add_child(leaves)
+
+func create_border() -> void:
+	var stone := Color(0.52, 0.49, 0.43)
+
+	for i in range(-4, 5):
+		var p := float(i) * 11.0
+
+		for side in [-1.0, 1.0]:
+			make_box(
+				district,
+				Vector3(p, 0.5, side * 48.0),
+				Vector3(0.7, 1.0, 0.7),
+				stone
+			)
+
+			make_box(
+				district,
+				Vector3(side * 48.0, 0.5, p),
+				Vector3(0.7, 1.0, 0.7),
+				stone
+			)
