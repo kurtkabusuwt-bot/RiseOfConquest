@@ -1,9 +1,9 @@
 
 extends Node3D
 
-# RISE OF CONQUEST - SAVAS 4.0
-# 3D savas, hareket, hasar, kusatma, komutan ve arastirma.
-# Onceki savas kayitlari korunur.
+# RISE OF CONQUEST - SAVAS 4.0 FIX
+# Godot 4.4.1 - Android
+# Tam savas motoru ve eski kayitlarla uyum.
 
 const SAVE_PATH := "user://roc_war_31.json"
 const TYPES := ["infantry", "archers", "cavalry", "assassin", "siege"]
@@ -45,8 +45,6 @@ var battle_camera: Camera3D
 var city_camera: Camera3D
 var city_transform := Transform3D.IDENTITY
 var city_fov := 55.0
-
-var castle_root: Node3D
 var castle_wall: Node3D
 
 var blue_units: Array[Dictionary] = []
@@ -63,7 +61,6 @@ var battle_hud: PanelContainer
 var hud_label: Label
 var battle_button: Button
 var formation_button: Button
-var order_button: Button
 
 func _ready() -> void:
 	call_deferred("initialize")
@@ -72,13 +69,10 @@ func initialize() -> void:
 	game = get_tree().current_scene as Node3D
 	if game == null:
 		return
-
 	expansion = game.get_node_or_null("ConquestExpansion")
 	kingdom = game.get_node_or_null("WarExpansion45")
-
 	if expansion == null:
 		return
-
 	load_war()
 	build_battlefield()
 	build_ui()
@@ -117,20 +111,15 @@ func total_army() -> int:
 	return total
 
 func kingdom_bonus() -> float:
-	if kingdom == null:
-		return 1.0
-	if not kingdom.has_method("military_bonus"):
-		return 1.0
-	return float(kingdom.call("military_bonus"))
+	if kingdom != null and kingdom.has_method("military_bonus"):
+		return maxf(1.0, float(kingdom.call("military_bonus")))
+	return 1.0
 
 func army_power() -> int:
 	var power := 0
-
 	for i in range(TYPES.size()):
 		power += army_count(str(TYPES[i])) * int(POWERS[i])
-
 	power += int(expansion.get("castle_level")) * 5
-
 	match formation:
 		0:
 			power += army_count("archers") * 2
@@ -138,15 +127,12 @@ func army_power() -> int:
 			power += army_count("infantry") * 3
 		2:
 			power += army_count("cavalry") * 5
-
 	power += mini(army_count("assassin"), 20) * 3
-
 	return int(float(power) * kingdom_bonus())
 
 func train_special(kind: String) -> void:
 	if fighting:
 		return
-
 	if int(game.get("barracks_count")) <= 0:
 		last_report = "Once kisla insa et."
 		update_panel()
@@ -161,7 +147,6 @@ func train_special(kind: String) -> void:
 			update_panel()
 			return
 		cost = {"coins": 120, "foods": 70}
-
 	elif kind == "siege":
 		if castle < 4:
 			last_report = "Kusatma icin kale 4 gerekli."
@@ -173,10 +158,8 @@ func train_special(kind: String) -> void:
 
 	if not can_pay(cost):
 		return
-
 	pay(cost)
 	extra_army[kind] = army_count(kind) + 2
-
 	last_report = "2 birlik egitildi: " + kind
 	save_war()
 	update_panel()
@@ -184,17 +167,14 @@ func train_special(kind: String) -> void:
 func next_formation() -> void:
 	if fighting:
 		return
-
 	formation = (formation + 1) % FORMATIONS.size()
 	save_war()
 	update_panel()
 
 func next_order() -> void:
 	order = (order + 1) % ORDERS.size()
-
 	if not fighting:
 		save_war()
-
 	update_panel()
 
 func make_material(color: Color) -> StandardMaterial3D:
@@ -253,19 +233,15 @@ func build_battlefield() -> void:
 		for i in range(5):
 			var x: float = float(side) * 24.0
 			var z: float = -15.0 + float(i) * 7.5
-
 			add_cylinder(
 				battlefield,
 				Vector3(x, 1.5, z),
 				0.22, 3.0,
 				Color(0.38, 0.25, 0.14)
 			)
-
 			var flag_color := Color(0.68, 0.16, 0.14)
-
 			if side < 0:
 				flag_color = Color(0.16, 0.36, 0.78)
-
 			add_box(
 				battlefield,
 				Vector3(x + 0.5, 2.2, z),
@@ -273,42 +249,33 @@ func build_battlefield() -> void:
 				flag_color
 			)
 
-	for i in range(8):
-		add_box(
-			battlefield,
-			Vector3(0, 0.012, -15.0 + float(i) * 4.3),
-			Vector3(0.08, 0.025, 1.5),
-			Color(0.67, 0.58, 0.39)
-		)
-
 	build_castle()
 
 	battle_camera = Camera3D.new()
 	battlefield.add_child(battle_camera)
 	battle_camera.position = Vector3(0, 23, 29)
-	battle_camera.look_at(battlefield.global_position)
+	battle_camera.look_at(battlefield.global_position, Vector3.UP)
 	battle_camera.fov = 60
 	battle_camera.current = false
-
 	battlefield.visible = false
 
 func build_castle() -> void:
-	castle_root = Node3D.new()
-	battlefield.add_child(castle_root)
-	castle_root.position = Vector3(22, 0, 0)
+	var castle := Node3D.new()
+	battlefield.add_child(castle)
+	castle.position = Vector3(22, 0, 0)
 
 	var stone := Color(0.48, 0.48, 0.46)
 	var dark := Color(0.32, 0.31, 0.30)
 
 	add_box(
-		castle_root,
+		castle,
 		Vector3(0, 1.4, 0),
 		Vector3(3.0, 2.8, 12.0),
 		stone
 	)
 
 	castle_wall = Node3D.new()
-	castle_root.add_child(castle_wall)
+	castle.add_child(castle_wall)
 
 	for i in range(9):
 		add_box(
@@ -320,21 +287,20 @@ func build_castle() -> void:
 
 	for z in [-5.6, 5.6]:
 		add_box(
-			castle_root,
+			castle,
 			Vector3(0, 3.0, z),
 			Vector3(3.6, 6.0, 2.4),
 			stone
 		)
-
 		add_box(
-			castle_root,
+			castle,
 			Vector3(0, 6.2, z),
 			Vector3(4.0, 0.7, 2.8),
 			dark
 		)
 
 	add_box(
-		castle_root,
+		castle,
 		Vector3(-1.55, 1.15, 0),
 		Vector3(0.15, 2.3, 2.4),
 		Color(0.24, 0.16, 0.09)
@@ -345,7 +311,6 @@ func create_soldier(kind: String, friendly: bool) -> Dictionary:
 	battlefield.add_child(root)
 
 	var armor := Color(0.18, 0.38, 0.79)
-
 	if not friendly:
 		armor = Color(0.77, 0.17, 0.14)
 
@@ -368,22 +333,18 @@ func create_soldier(kind: String, friendly: bool) -> Dictionary:
 		left_leg, Vector3(0, -0.34, 0),
 		Vector3(0.19, 0.7, 0.21), leather
 	)
-
 	add_box(
 		right_leg, Vector3(0, -0.34, 0),
 		Vector3(0.19, 0.7, 0.21), leather
 	)
-
 	add_box(
 		body, Vector3(0, 1.1, 0),
 		Vector3(0.53, 0.78, 0.38), armor
 	)
-
 	add_cylinder(
 		body, Vector3(0, 1.7, 0),
 		0.23, 0.36, skin
 	)
-
 	add_box(
 		body, Vector3(0, 1.92, 0),
 		Vector3(0.51, 0.17, 0.46), steel
@@ -401,7 +362,6 @@ func create_soldier(kind: String, friendly: bool) -> Dictionary:
 		left_arm, Vector3(0, -0.33, 0),
 		Vector3(0.18, 0.65, 0.19), armor
 	)
-
 	add_box(
 		right_arm, Vector3(0, -0.33, 0),
 		Vector3(0.18, 0.65, 0.19), armor
@@ -429,7 +389,6 @@ func create_soldier(kind: String, friendly: bool) -> Dictionary:
 			Vector3(0.18, 1.3, 0.16),
 			leather
 		)
-
 		add_box(
 			right_arm,
 			Vector3(0, -1.3, -0.15),
@@ -459,14 +418,12 @@ func create_soldier(kind: String, friendly: bool) -> Dictionary:
 			Vector3(0.72, 0.75, 1.25),
 			leather
 		)
-
 		add_box(
 			root,
 			Vector3(0, 1.14, -0.44),
 			Vector3(0.42, 0.72, 0.37),
 			leather
 		)
-
 		body.position.y = 0.75
 
 	var hp := 80.0
@@ -482,21 +439,18 @@ func create_soldier(kind: String, friendly: bool) -> Dictionary:
 			speed = 1.6
 			reach = 12.0
 			cooldown = 1.6
-
 		"cavalry":
 			hp = 115.0
 			damage = 20.0
 			speed = 3.8
 			reach = 1.8
 			cooldown = 1.1
-
 		"assassin":
 			hp = 65.0
 			damage = 23.0
 			speed = 3.3
 			reach = 1.2
 			cooldown = 0.7
-
 		"siege":
 			hp = 150.0
 			damage = 35.0
@@ -563,10 +517,8 @@ func deploy_armies() -> void:
 	for i in range(TYPES.size()):
 		var kind: String = str(TYPES[i])
 		var count := mini(army_count(kind), remaining)
-
 		for j in range(count):
 			blue_units.append(create_soldier(kind, true))
-
 		remaining -= count
 
 	var enemy_count := mini(25, 12 + conquered * 2)
@@ -578,14 +530,12 @@ func deploy_armies() -> void:
 	for i in range(blue_units.size()):
 		var unit: Dictionary = blue_units[i]
 		var root: Node3D = unit["root"]
-
 		var x := -13.0 + float(i % 5) * 1.55
 		var z := -9.0 + float(int(i / 5)) * 2.1
 
 		if formation == 1:
 			x = -14.0 + float(i % 4) * 1.7
 			z = -8.0 + float(int(i / 4)) * 1.5
-
 		elif formation == 2:
 			var row := int(sqrt(float(i)))
 			x = -14.0 + float(row) * 1.7
@@ -596,7 +546,6 @@ func deploy_armies() -> void:
 	for i in range(red_units.size()):
 		var unit: Dictionary = red_units[i]
 		var root: Node3D = unit["root"]
-
 		root.position = Vector3(
 			12.0 + float(i % 4) * 1.5,
 			0,
@@ -605,25 +554,21 @@ func deploy_armies() -> void:
 
 	initial_blue = blue_units.size()
 	initial_red = red_units.size()
-
 	blue_fallen = 0
 	red_fallen = 0
 
 	wall_max = 160.0 + float(conquered) * 35.0
 	wall_hp = wall_max
 	wall_destroyed = false
-
 	castle_wall.visible = true
 
 func open_battle_view() -> void:
 	battlefield.visible = true
-
 	city_camera = get_viewport().get_camera_3d()
 
 	if city_camera != null:
 		city_transform = city_camera.global_transform
 		city_fov = city_camera.fov
-
 		city_camera.global_transform = battle_camera.global_transform
 		city_camera.fov = battle_camera.fov
 	else:
@@ -633,13 +578,8 @@ func open_battle_view() -> void:
 	battle_hud.visible = true
 
 func keep_battle_camera() -> void:
-	if city_camera == null:
-		return
-
-	if not is_instance_valid(city_camera):
-		return
-
-	city_camera.global_transform = battle_camera.global_transform
+	if city_camera != null and is_instance_valid(city_camera):
+		city_camera.global_transform = battle_camera.global_transform
 
 func close_battle_view() -> void:
 	if city_camera != null and is_instance_valid(city_camera):
@@ -677,12 +617,10 @@ func begin_battle() -> void:
 	current_enemy = str(targets[conquered % targets.size()])
 	enemy_power = 100 + conquered * 90 + war_wins * 15
 	our_power = army_power()
-
 	used_siege_supply = false
 
-	if kingdom != null:
+	if kingdom != null and kingdom.has_method("save_data"):
 		var supplies := int(kingdom.get("siege_supplies"))
-
 		if supplies > 0:
 			kingdom.set("siege_supplies", supplies - 1)
 			kingdom.call("save_data")
@@ -691,14 +629,12 @@ func begin_battle() -> void:
 	fighting = true
 	battle_time = 0.0
 	order = 0
-
 	deploy_armies()
 
 	if used_siege_supply:
 		wall_hp *= 0.70
 
 	open_battle_view()
-
 	last_report = "Savas basladi: " + current_enemy
 	update_panel()
 
@@ -725,11 +661,9 @@ func closest_enemy(
 
 func count_alive(units: Array[Dictionary]) -> int:
 	var count := 0
-
 	for unit in units:
 		if bool(unit["alive"]):
 			count += 1
-
 	return count
 
 func create_effect(pos: Vector3, color: Color) -> void:
@@ -748,13 +682,9 @@ func create_effect(pos: Vector3, color: Color) -> void:
 			Vector3(0.12, 0.12, 0.12),
 			color
 		)
-
 		particle.rotation.z = randf_range(-1.0, 1.0)
 
-	effects.append({
-		"node": node,
-		"life": 0.45
-	})
+	effects.append({"node": node, "life": 0.45})
 
 func damage_wall(amount: float) -> void:
 	if wall_destroyed:
@@ -770,7 +700,6 @@ func damage_wall(amount: float) -> void:
 	if wall_hp <= 0.0:
 		wall_destroyed = true
 		castle_wall.visible = false
-
 		create_effect(
 			Vector3(20.0, 2.0, 0),
 			Color(1.0, 0.45, 0.12)
@@ -812,7 +741,6 @@ func deal_damage(target: Dictionary, amount: float) -> void:
 		return
 
 	target["hp"] = float(target["hp"]) - amount
-
 	var root: Node3D = target["root"]
 
 	create_effect(
@@ -846,23 +774,18 @@ func update_unit(
 			float(unit["fall"]) + delta * 2.0,
 			1.0
 		)
-
 		var fall: float = float(unit["fall"])
-		root.rotation.z = lerpf(
-			root.rotation.z, 1.35, fall
-		)
+		root.rotation.z = lerpf(root.rotation.z, 1.35, fall)
 		root.position.y = -fall * 0.35
 		return
 
 	unit["timer"] = float(unit["timer"]) - delta
-
 	unit["attack_anim"] = maxf(
 		0.0,
 		float(unit["attack_anim"]) - delta * 3.0
 	)
 
 	var target := closest_enemy(unit, opponents)
-
 	if target.is_empty():
 		return
 
@@ -874,14 +797,12 @@ func update_unit(
 	var reach: float = float(unit["reach"])
 	var kind: String = str(unit["kind"])
 	var friendly: bool = bool(unit["friendly"])
-
 	var move_allowed := true
 
 	if friendly and order == 1:
 		move_allowed = distance > reach + 3.0
 
 	var move_speed: float = float(unit["speed"])
-
 	if friendly and order == 2:
 		move_speed *= 1.4
 
@@ -890,20 +811,15 @@ func update_unit(
 			distance - reach,
 			move_speed * delta
 		)
-
 		root.position += direction.normalized() * step
 		unit["moving"] = true
 	else:
 		unit["moving"] = false
 
 	if direction.length() > 0.01:
-		root.rotation.y = atan2(
-			-direction.x, -direction.z
-		)
+		root.rotation.y = atan2(-direction.x, -direction.z)
 
-	var phase: float = (
-		battle_time * 9.0 + float(unit["phase"])
-	)
+	var phase: float = battle_time * 9.0 + float(unit["phase"])
 
 	if bool(unit["moving"]):
 		left_leg.rotation.x = sin(phase) * 0.55
@@ -922,7 +838,6 @@ func update_unit(
 		)
 
 	var attack_pose: float = float(unit["attack_anim"])
-
 	if attack_pose > 0.0:
 		right_arm.rotation.x = -attack_pose * 1.7
 
@@ -980,9 +895,7 @@ func update_projectiles(delta: float) -> void:
 
 		if bool(target["alive"]):
 			var target_root: Node3D = target["root"]
-			destination = (
-				target_root.position + Vector3(0, 1.0, 0)
-			)
+			destination = target_root.position + Vector3(0, 1.0, 0)
 
 		var direction := destination - node.position
 		var distance := direction.length()
@@ -990,4 +903,19 @@ func update_projectiles(delta: float) -> void:
 
 		if distance <= speed * delta + 0.3:
 			if bool(target["alive"]):
-				deal_dam
+				deal_damage(target, float(shot["damage"]))
+
+			if bool(shot["siege"]):
+				create_effect(
+					destination,
+					Color(0.9, 0.42, 0.1)
+				)
+
+			node.queue_free()
+			projectiles.remove_at(i)
+		else:
+			node.position += direction.normalized() * speed * delta
+			node.look_at(destination, Vector3.UP)
+
+func update_effects(delta: float) -> void:
+	for i
