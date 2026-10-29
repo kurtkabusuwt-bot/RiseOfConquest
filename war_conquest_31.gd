@@ -1,6 +1,9 @@
 
 extends Node3D
 
+# RISE OF CONQUEST - SAVAS 3.2
+# 3D gorunur savas ve kamera duzeltmesi
+
 const SAVE_PATH := "user://roc_war_31.json"
 const TYPES := ["infantry", "archers", "cavalry", "assassin", "siege"]
 const FORMATIONS := ["HAT", "KARE", "KAMA"]
@@ -14,19 +17,24 @@ var conquered := 0
 var war_wins := 0
 var war_losses := 0
 var last_report := "Henuz savas yapilmadi."
+
 var fighting := false
 var battle_clock := 0.0
-var battle_duration := 7.0
+var battle_duration := 12.0
 var enemy_power := 0
 var our_power := 0
 var current_enemy := ""
+
 var battlefield: Node3D
 var friend_units: Array[Node3D] = []
 var enemy_units: Array[Node3D] = []
-var camera: Camera3D
-var previous_camera_transform := Transform3D.IDENTITY
-var previous_camera_current := false
+var friend_origins: Array[Vector3] = []
+var enemy_origins: Array[Vector3] = []
+
+var city_camera: Camera3D
+var old_camera_transform := Transform3D.IDENTITY
 var battle_camera: Camera3D
+
 var ui: CanvasLayer
 var panel: PanelContainer
 var stats_label: Label
@@ -42,9 +50,11 @@ func initialize() -> void:
 	game = get_tree().current_scene as Node3D
 	if game == null:
 		return
+
 	expansion = game.get_node_or_null("ConquestExpansion")
 	if expansion == null:
 		return
+
 	load_war()
 	build_battlefield()
 	build_ui()
@@ -97,9 +107,7 @@ func army_power() -> int:
 		2:
 			power += army_count("cavalry") * 5
 
-	if army_count("assassin") > 0:
-		power += mini(army_count("assassin"), 20) * 3
-
+	power += mini(army_count("assassin"), 20) * 3
 	return power
 
 func train_special(kind: String) -> void:
@@ -134,7 +142,7 @@ func train_special(kind: String) -> void:
 
 	pay(cost)
 	extra_army[kind] = army_count(kind) + 2
-	last_report = "2 " + ("suikastci" if kind == "assassin" else "kusatma birligi") + " egitildi."
+	last_report = "2 birlik egitildi: " + kind
 	save_war()
 	update_panel()
 
@@ -148,12 +156,12 @@ func next_formation() -> void:
 func make_material(color: Color) -> StandardMaterial3D:
 	var material := StandardMaterial3D.new()
 	material.albedo_color = color
-	material.roughness = 0.8
+	material.roughness = 0.75
 	return material
 
 func add_box(
 	parent: Node3D,
-	position: Vector3,
+	pos: Vector3,
 	size: Vector3,
 	color: Color
 ) -> MeshInstance3D:
@@ -161,14 +169,14 @@ func add_box(
 	var mesh := BoxMesh.new()
 	mesh.size = size
 	node.mesh = mesh
-	node.position = position
+	node.position = pos
 	node.material_override = make_material(color)
 	parent.add_child(node)
 	return node
 
 func add_cylinder(
 	parent: Node3D,
-	position: Vector3,
+	pos: Vector3,
 	radius: float,
 	height: float,
 	color: Color
@@ -179,101 +187,145 @@ func add_cylinder(
 	mesh.bottom_radius = radius
 	mesh.height = height
 	node.mesh = mesh
-	node.position = position
+	node.position = pos
 	node.material_override = make_material(color)
 	parent.add_child(node)
 	return node
 
 func build_battlefield() -> void:
 	battlefield = Node3D.new()
-	battlefield.name = "Battlefield31"
+	battlefield.name = "Battlefield32"
 	game.add_child(battlefield)
 	battlefield.position = Vector3(0, 0, -75)
 
 	add_box(
 		battlefield,
-		Vector3(0, -0.18, 0),
-		Vector3(38, 0.35, 28),
-		Color(0.35, 0.39, 0.27)
+		Vector3(0, -0.2, 0),
+		Vector3(42, 0.4, 32),
+		Color(0.37, 0.40, 0.28)
 	)
 
 	for side in [-1.0, 1.0]:
 		for i in range(5):
-			var x: float = float(side) * 17.0
-			var z := -11.0 + i * 5.4
+			var x: float = float(side) * 18.0
+			var z: float = -12.0 + float(i) * 6.0
 			add_cylinder(
 				battlefield,
-				Vector3(x, 1.3, z),
-				0.28, 2.6,
-				Color(0.43, 0.34, 0.23)
+				Vector3(x, 1.5, z),
+				0.25, 3.0,
+				Color(0.43, 0.32, 0.20)
 			)
+			var flag_color := Color(0.68, 0.16, 0.13)
+			if side < 0:
+				flag_color = Color(0.17, 0.35, 0.70)
 			add_box(
 				battlefield,
-				Vector3(x, 2.2, z),
-				Vector3(1.15, 0.85, 0.08),
-				Color(0.65, 0.15, 0.13) if side > 0 else Color(0.17, 0.35, 0.65)
+				Vector3(x, 2.35, z),
+				Vector3(1.1, 0.8, 0.1),
+				flag_color
 			)
 
 	add_box(
 		battlefield,
-		Vector3(0, 0.015, 0),
-		Vector3(0.18, 0.025, 26),
-		Color(0.65, 0.56, 0.36)
+		Vector3(0, 0.02, 0),
+		Vector3(0.15, 0.04, 29),
+		Color(0.72, 0.63, 0.43)
 	)
 
 	battle_camera = Camera3D.new()
 	battlefield.add_child(battle_camera)
-	battle_camera.position = Vector3(0, 23, 26)
-	battle_camera.look_at(Vector3(0, 0, 0))
+	battle_camera.position = Vector3(0, 19, 24)
+	battle_camera.look_at(
+		battlefield.global_position,
+		Vector3.UP
+	)
 	battle_camera.fov = 65
 	battle_camera.current = false
+
 	battlefield.visible = false
 
 func create_fighter(kind: String, friendly: bool) -> Node3D:
 	var fighter := Node3D.new()
 	battlefield.add_child(fighter)
 
-	var main_color := Color(0.22, 0.39, 0.73) if friendly else Color(0.69, 0.18, 0.17)
-	var steel := Color(0.57, 0.59, 0.63)
-	var wood := Color(0.43, 0.28, 0.15)
+	var armor := Color(0.19, 0.38, 0.75)
+	if not friendly:
+		armor = Color(0.73, 0.18, 0.15)
+
+	var steel := Color(0.68, 0.70, 0.74)
+	var wood := Color(0.41, 0.27, 0.15)
 
 	if kind == "siege":
-		add_box(fighter, Vector3(0, 0.5, 0),
-			Vector3(1.4, 0.35, 1.6), wood)
-		for side in [-0.65, 0.65]:
-			add_cylinder(fighter, Vector3(side, 0.35, 0.5),
-				0.33, 0.22, Color(0.22, 0.18, 0.14))
-		add_box(fighter, Vector3(0, 1.3, -0.15),
-			Vector3(0.22, 1.65, 0.22), wood)
-		add_box(fighter, Vector3(0, 2.05, -0.35),
-			Vector3(0.7, 0.2, 0.55), steel)
+		add_box(
+			fighter, Vector3(0, 0.55, 0),
+			Vector3(1.3, 0.35, 1.4), wood
+		)
+		add_box(
+			fighter, Vector3(0, 1.35, 0),
+			Vector3(0.18, 1.5, 0.18), wood
+		)
+		add_box(
+			fighter, Vector3(0, 2.0, -0.35),
+			Vector3(0.6, 0.2, 0.6), steel
+		)
 		return fighter
 
-	if kind == "cavalry":
-		add_box(fighter, Vector3(0, 0.85, 0),
-			Vector3(0.55, 0.7, 1.1), wood)
-		add_box(fighter, Vector3(0, 1.3, -0.43),
-			Vector3(0.35, 0.7, 0.35), wood)
+	var height_offset := 0.0
 
-	var rider_height := 0.6 if kind == "cavalry" else 0.0
-	add_box(fighter, Vector3(0, 1.0 + rider_height, 0),
-		Vector3(0.48, 0.72, 0.36), main_color)
-	add_cylinder(fighter, Vector3(0, 1.56 + rider_height, 0),
-		0.22, 0.35, steel)
+	if kind == "cavalry":
+		add_box(
+			fighter, Vector3(0, 0.8, 0),
+			Vector3(0.65, 0.65, 1.2), wood
+		)
+		add_box(
+			fighter, Vector3(0, 1.2, -0.48),
+			Vector3(0.4, 0.65, 0.35), wood
+		)
+		height_offset = 0.65
+
+	add_box(
+		fighter,
+		Vector3(0, 0.95 + height_offset, 0),
+		Vector3(0.5, 0.75, 0.38),
+		armor
+	)
+
+	add_cylinder(
+		fighter,
+		Vector3(0, 1.55 + height_offset, 0),
+		0.22, 0.38, steel
+	)
+
+	if kind == "assassin":
+		add_box(
+			fighter,
+			Vector3(0, 1.85, 0),
+			Vector3(0.6, 0.35, 0.48),
+			Color(0.12, 0.12, 0.16)
+		)
 
 	if kind == "archers":
-		add_box(fighter, Vector3(0.4, 1.0, -0.1),
-			Vector3(0.09, 1.25, 0.13), wood)
-	elif kind == "assassin":
-		add_box(fighter, Vector3(0, 1.88, 0.06),
-			Vector3(0.54, 0.3, 0.44), Color(0.13, 0.13, 0.17))
-		add_box(fighter, Vector3(0.42, 0.9, -0.2),
-			Vector3(0.07, 0.65, 0.1), steel)
+		add_box(
+			fighter,
+			Vector3(0.4, 1.0, -0.1),
+			Vector3(0.1, 1.3, 0.12),
+			wood
+		)
 	else:
-		add_box(fighter, Vector3(0.4, 1.0 + rider_height, -0.1),
-			Vector3(0.1, 1.1, 0.12), steel)
-		add_box(fighter, Vector3(-0.4, 1.0 + rider_height, -0.1),
-			Vector3(0.4, 0.55, 0.12), main_color)
+		add_box(
+			fighter,
+			Vector3(0.42, 1.0 + height_offset, -0.1),
+			Vector3(0.1, 1.2, 0.12),
+			steel
+		)
+
+	if kind == "infantry":
+		add_box(
+			fighter,
+			Vector3(-0.42, 1.0, -0.1),
+			Vector3(0.38, 0.65, 0.12),
+			armor
+		)
 
 	return fighter
 
@@ -281,71 +333,103 @@ func clear_fighters() -> void:
 	for unit in friend_units:
 		if is_instance_valid(unit):
 			unit.queue_free()
+
 	for unit in enemy_units:
 		if is_instance_valid(unit):
 			unit.queue_free()
+
 	friend_units.clear()
 	enemy_units.clear()
+	friend_origins.clear()
+	enemy_origins.clear()
 
 func deploy_armies() -> void:
 	clear_fighters()
 
-	var visible_limit := 20
+	var remaining := 20
+
 	for i in range(TYPES.size()):
 		var kind: String = str(TYPES[i])
-		var count := mini(army_count(kind), visible_limit)
+		var count := mini(army_count(kind), remaining)
+
 		for j in range(count):
 			var fighter := create_fighter(kind, true)
 			friend_units.append(fighter)
-		visible_limit -= count
 
-	for i in range(16):
+		remaining -= count
+
+	for i in range(20):
 		var enemy_kind: String = str(TYPES[i % 4])
-		var fighter := create_fighter(enemy_kind, false)
-		enemy_units.append(fighter)
+		enemy_units.append(
+			create_fighter(enemy_kind, false)
+		)
 
 	for i in range(friend_units.size()):
-		var x := -13.0 + float(i % 5) * 2.2
-		var z := -7.0 + float(int(i / 5)) * 2.4
+		var x := -13.0 + float(i % 5) * 1.8
+		var z := -8.0 + float(int(i / 5)) * 2.1
+
 		if formation == 1:
-			x = -13.0 + float(i % 4) * 2.3
-			z = -5.0 + float(int(i / 4)) * 1.8
+			x = -13.0 + float(i % 4) * 2.0
+			z = -7.0 + float(int(i / 4)) * 1.7
 		elif formation == 2:
 			var row := int(sqrt(float(i)))
-			x = -12.0 + float(i - row * row - row) * 1.5
-			z = -7.0 + float(row) * 2.0
-		friend_units[i].position = Vector3(x, 0, z)
-		friend_units[i].rotation.y = -PI * 0.5
+			x = -13.0 + float(i - row * row - row) * 1.5
+			z = -8.0 + float(row) * 2.0
+
+		var unit := friend_units[i]
+		unit.position = Vector3(x, 0, z)
+		unit.rotation.y = -PI * 0.5
+		friend_origins.append(unit.position)
 
 	for i in range(enemy_units.size()):
-		enemy_units[i].position = Vector3(
-			12.0 - float(i % 4) * 1.6,
-			0,
-			-6.0 + float(int(i / 4)) * 2.0
-		)
-		enemy_units[i].rotation.y = PI * 0.5
+		var x := 13.0 - float(i % 5) * 1.7
+		var z := -8.0 + float(int(i / 5)) * 2.1
+
+		var unit := enemy_units[i]
+		unit.position = Vector3(x, 0, z)
+		unit.rotation.y = PI * 0.5
+		enemy_origins.append(unit.position)
 
 func open_battle_view() -> void:
-	camera = get_viewport().get_camera_3d()
-	if camera != null and camera != battle_camera:
-		previous_camera_transform = camera.global_transform
-		previous_camera_current = camera.current
-		camera.current = false
 	battlefield.visible = true
-	battle_camera.current = true
+
+	# Mevcut aktif kamerayi kullan.
+	# Yeni kamera aktif edilmiyor; boylece
+	# sehir kamera sistemi goruntuyu geri alamaz.
+	city_camera = get_viewport().get_camera_3d()
+
+	if city_camera != null:
+		old_camera_transform = city_camera.global_transform
+		city_camera.global_transform = battle_camera.global_transform
+		city_camera.fov = 65
+	else:
+		battle_camera.make_current()
+
+	if panel != null:
+		panel.visible = false
+
+func keep_battle_camera() -> void:
+	if city_camera == null:
+		return
+	if not is_instance_valid(city_camera):
+		return
+
+	# Savas boyunca ayni kamerayi sahada tut.
+	city_camera.global_transform = battle_camera.global_transform
 
 func close_battle_view() -> void:
-	if battle_camera != null:
+	if city_camera != null and is_instance_valid(city_camera):
+		city_camera.global_transform = old_camera_transform
+		city_camera.make_current()
+	else:
 		battle_camera.current = false
-	if camera != null and is_instance_valid(camera):
-		camera.global_transform = previous_camera_transform
-		camera.current = previous_camera_current
-	if battlefield != null:
-		battlefield.visible = false
+
+	battlefield.visible = false
 
 func begin_battle() -> void:
 	if fighting:
 		return
+
 	if total_army() < 5:
 		last_report = "Savas icin en az 5 asker gerekli."
 		update_panel()
@@ -363,12 +447,14 @@ func begin_battle() -> void:
 		"Kuzey Garnizonu",
 		"Kraliyet Kalesi"
 	]
-	current_enemy = targets[conquered % targets.size()]
+
+	current_enemy = str(targets[conquered % targets.size()])
 	enemy_power = 100 + conquered * 90 + war_wins * 15
 	our_power = army_power()
 
 	fighting = true
 	battle_clock = 0.0
+
 	deploy_armies()
 	open_battle_view()
 
@@ -382,7 +468,11 @@ func apply_losses(victory: bool) -> String:
 	for kind in TYPES:
 		var unit_kind: String = str(kind)
 		var count := army_count(unit_kind)
-		var lost := mini(count, int(ceil(float(count) / float(divisor))))
+		var lost := mini(
+			count,
+			int(ceil(float(count) / float(divisor)))
+		)
+
 		if lost <= 0:
 			continue
 
@@ -395,6 +485,7 @@ func apply_losses(victory: bool) -> String:
 
 	if losses.is_empty():
 		return "Kayip yok."
+
 	return ", ".join(PackedStringArray(losses))
 
 func finish_battle() -> void:
@@ -407,50 +498,113 @@ func finish_battle() -> void:
 	if victory:
 		war_wins += 1
 		conquered += 1
+
 		var coins := 120 + conquered * 30
 		var stones := 55 + conquered * 12
-		reward({"coins": coins, "stones": stones, "woods": 45})
+
+		reward({
+			"coins": coins,
+			"stones": stones,
+			"woods": 45
+		})
+
 		last_report = "ZAFER! " + current_enemy + " fethedildi.\n"
-		last_report += "Odul: %d altin, %d tas, 45 odun.\n" % [coins, stones]
+		last_report += "Odul: %d altin, %d tas, 45 odun.\n" % [
+			coins, stones
+		]
 	else:
 		war_losses += 1
 		last_report = "YENILGI! " + current_enemy + " alinamadi.\n"
 
-	last_report += "Bizim guc: %d | Dusman: %d\n" % [our_power, enemy_power]
+	last_report += "Bizim guc: %d | Dusman: %d\n" % [
+		our_power, enemy_power
+	]
 	last_report += "Kayiplar: " + losses
 
 	save_war()
 	expansion.call("save_expansion", false)
 	update_panel()
 
+	if panel != null:
+		panel.visible = true
+
 func _process(delta: float) -> void:
 	if not fighting:
 		return
 
 	battle_clock += delta
-	var progress := clampf(battle_clock / battle_duration, 0.0, 1.0)
+	keep_battle_camera()
+
+	var progress := clampf(
+		battle_clock / battle_duration,
+		0.0, 1.0
+	)
+
+	# Ilk 7 saniye ilerleme, sonra carpismalar.
+	var march := minf(battle_clock / 7.0, 1.0)
 
 	for i in range(friend_units.size()):
 		var unit := friend_units[i]
-		if is_instance_valid(unit):
-			unit.position.x += delta * 1.5
-			unit.position.y = absf(sin(battle_clock * 5.0 + i)) * 0.07
+		if not is_instance_valid(unit):
+			continue
+
+		var origin := friend_origins[i]
+		unit.position.x = origin.x + march * 7.0
+
+		var bounce := absf(
+			sin(battle_clock * 10.0 + float(i))
+		) * 0.10
+
+		if battle_clock >= 7.0:
+			bounce = absf(
+				sin(battle_clock * 17.0 + float(i))
+			) * 0.22
+			unit.rotation.z = sin(
+				battle_clock * 9.0 + float(i)
+			) * 0.12
+
+		unit.position.y = bounce
 
 	for i in range(enemy_units.size()):
 		var unit := enemy_units[i]
-		if is_instance_valid(unit):
-			unit.position.x -= delta * 1.5
-			unit.position.y = absf(sin(battle_clock * 5.0 + i)) * 0.07
+		if not is_instance_valid(unit):
+			continue
+
+		var origin := enemy_origins[i]
+		unit.position.x = origin.x - march * 7.0
+
+		var bounce := absf(
+			sin(battle_clock * 10.0 + float(i))
+		) * 0.10
+
+		if battle_clock >= 7.0:
+			bounce = absf(
+				sin(battle_clock * 17.0 + float(i))
+			) * 0.22
+			unit.rotation.z = sin(
+				battle_clock * 9.0 + float(i)
+			) * 0.12
+
+		unit.position.y = bounce
 
 	if battle_label != null:
-		battle_label.text = "SAVAS: %s | %d%%" % [
-			current_enemy, int(progress * 100.0)
-		]
+		if battle_clock < 7.0:
+			battle_label.text = "ORDULAR ILERLIYOR - %d%%" % [
+				int(progress * 100.0)
+			]
+		else:
+			battle_label.text = "CARPISMA - %d%%" % [
+				int(progress * 100.0)
+			]
 
 	if battle_clock >= battle_duration:
 		finish_battle()
 
-func make_button(parent: VBoxContainer, title: String, action: Callable) -> Button:
+func make_button(
+	parent: VBoxContainer,
+	title: String,
+	action: Callable
+) -> Button:
 	var button := Button.new()
 	button.text = title
 	button.custom_minimum_size = Vector2(0, 42)
@@ -464,7 +618,7 @@ func build_ui() -> void:
 	add_child(ui)
 
 	var open_button := Button.new()
-	open_button.text = "SAVAS 3.1"
+	open_button.text = "SAVAS 3.2"
 	open_button.position = Vector2(12, 45)
 	open_button.custom_minimum_size = Vector2(145, 44)
 	ui.add_child(open_button)
@@ -487,21 +641,27 @@ func build_ui() -> void:
 	content.add_child(stats_label)
 
 	formation_button = make_button(
-		content, "FORMASYON DEGISTIR", next_formation
+		content,
+		"FORMASYON DEGISTIR",
+		next_formation
 	)
 
 	make_button(
-		content, "2 SUIKASTCI EGIT",
+		content,
+		"2 SUIKASTCI EGIT",
 		func(): train_special("assassin")
 	)
 
 	make_button(
-		content, "2 KUSATMA BIRLIGI EGIT",
+		content,
+		"2 KUSATMA BIRLIGI EGIT",
 		func(): train_special("siege")
 	)
 
 	battle_button = make_button(
-		content, "FETIH SAVASI BASLAT", begin_battle
+		content,
+		"FETIH SAVASI BASLAT",
+		begin_battle
 	)
 
 	battle_label = Label.new()
@@ -518,6 +678,7 @@ func build_ui() -> void:
 func toggle_panel() -> void:
 	if fighting:
 		return
+
 	panel.visible = not panel.visible
 	update_panel()
 
@@ -530,18 +691,25 @@ func update_panel() -> void:
 		army_count("archers"),
 		army_count("cavalry")
 	]
+
 	stats_label.text += "SUIKASTCI %d | KUSATMA %d\n" % [
 		army_count("assassin"),
 		army_count("siege")
 	]
+
 	stats_label.text += "GUC %d | FORMASYON %s\n" % [
-		army_power(), FORMATIONS[formation]
+		army_power(),
+		FORMATIONS[formation]
 	]
+
 	stats_label.text += "FETIH %d | ZAFER %d | YENILGI %d" % [
-		conquered, war_wins, war_losses
+		conquered,
+		war_wins,
+		war_losses
 	]
 
 	report_label.text = last_report
+
 	if not fighting:
 		battle_label.text = "Ordu savasa hazir."
 
@@ -560,9 +728,11 @@ func save_war() -> void:
 		"losses": war_losses,
 		"report": last_report
 	}
+
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file == null:
 		return
+
 	file.store_string(JSON.stringify(data))
 	file.close()
 
@@ -574,7 +744,9 @@ func load_war() -> void:
 	if file == null:
 		return
 
-	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	var parsed: Variant = JSON.parse_string(
+		file.get_as_text()
+	)
 	file.close()
 
 	if not (parsed is Dictionary):
@@ -582,11 +754,18 @@ func load_war() -> void:
 
 	var data: Dictionary = parsed
 	var saved_army: Variant = data.get("extra_army", {})
+
 	if saved_army is Dictionary:
 		for kind in extra_army:
-			extra_army[kind] = maxi(0, int(saved_army.get(kind, 0)))
+			extra_army[kind] = maxi(
+				0,
+				int(saved_army.get(kind, 0))
+			)
 
-	formation = clampi(int(data.get("formation", 0)), 0, 2)
+	formation = clampi(
+		int(data.get("formation", 0)),
+		0, 2
+	)
 	conquered = maxi(0, int(data.get("conquered", 0)))
 	war_wins = maxi(0, int(data.get("wins", 0)))
 	war_losses = maxi(0, int(data.get("losses", 0)))
