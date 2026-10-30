@@ -1,3 +1,5 @@
+Üçüncü dosya: war_conquest_31.gd — güncellenecek mevcut dosya.
+
 extends Node3D
 
 # RISE OF CONQUEST - SAVAS 4.0 MODULAR
@@ -337,6 +339,9 @@ func deploy() -> void:
 			-8.0 + float(int(i / 4)) * 1.8
 		)
 
+	for unit in blue_units + red_units:
+		combat.ai.set_home(unit)
+
 	initial_blue = blue_units.size()
 	initial_red = red_units.size()
 
@@ -419,12 +424,15 @@ func _process(delta: float) -> void:
 	if city_camera != null and is_instance_valid(city_camera):
 		city_camera.global_transform = battle_camera.global_transform
 
+	combat.prepare_frame(blue_units, red_units)
+
 	for unit in blue_units:
 		var moving: bool = combat.update_unit(
 			unit, red_units, delta,
 			order, formation,
 			battlefield,
-			Callable(siege, "damage")
+			Callable(siege, "damage"),
+			blue_units
 		)
 		units.animate(unit, delta, battle_time, moving)
 
@@ -432,7 +440,8 @@ func _process(delta: float) -> void:
 		var moving: bool = combat.update_unit(
 			unit, blue_units, delta,
 			0, 0, battlefield,
-			Callable(siege, "damage")
+			Callable(siege, "damage"),
+			red_units
 		)
 		units.animate(unit, delta, battle_time, moving)
 
