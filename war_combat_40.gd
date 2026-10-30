@@ -5,6 +5,9 @@ extends RefCounted
 # Cavalry charge, shields, ranged tactics,
 # assassin critical hits, siege targeting.
 
+const TacticalAI = preload("res://war_ai_89.gd")
+var ai = TacticalAI.new()
+
 var shots: Array[Dictionary] = []
 
 # Optional battle-local modifier. Existing callers retain the original behavior.
@@ -18,6 +21,7 @@ var critical_hits := 0
 var arrows_fired := 0
 
 func reset() -> void:
+	ai.reset()
 	for shot in shots:
 		var node: Node3D = shot["node"]
 		if is_instance_valid(node):
@@ -44,45 +48,11 @@ func closest(
 	unit: Dictionary,
 	opponents: Array[Dictionary]
 ) -> Dictionary:
-	var root: Node3D = unit["root"]
-	var best: Dictionary = {}
-	var best_score := INF
-	var kind: String = str(unit["kind"])
+	var allies: Array[Dictionary] = []
+	return ai.target(unit, opponents, allies, 0.0, true)
 
-	for enemy in opponents:
-		if not bool(enemy["alive"]):
-			continue
-
-		var target: Node3D = enemy["root"]
-		var distance := root.position.distance_to(
-			target.position
-		)
-		var score := distance
-
-		# Assassins seek archers and siege operators.
-		if kind == "assassin":
-			if str(enemy["kind"]) == "archers":
-				score *= 0.55
-			elif str(enemy["kind"]) == "siege":
-				score *= 0.65
-
-		# Cavalry prioritizes exposed ranged troops.
-		if kind == "cavalry":
-			if str(enemy["kind"]) == "archers":
-				score *= 0.72
-
-		# Siege troops favor heavy targets.
-		if kind == "siege":
-			if str(enemy["kind"]) == "cavalry":
-				score *= 0.75
-			elif str(enemy["kind"]) == "siege":
-				score *= 0.70
-
-		if score < best_score:
-			best_score = score
-			best = enemy
-
-	return best
+func prepare_frame(blue: Array[Dictionary], red: Array[Dictionary]) -> void:
+	ai.prepare_frame(blue, red)
 
 func hit(
 	target: Dictionary,
@@ -220,16 +190,17 @@ func update_unit(
 	order: int,
 	formation: int,
 	parent: Node3D,
-	siege_callback: Callable
+	siege_callback: Callable,
+	allies: Array[Dictionary] = []
 ) -> bool:
 	if not bool(unit["alive"]):
 		return false
 
 	unit["timer"] = float(unit["timer"]) - delta
 
-	var target := closest(unit, opponents)
+	var target := ai.target(unit, opponents, allies, delta)
 	if target.is_empty():
-		return false
+		return ai.move(unit, target, opponents, allies, delta, order, 0.0)
 
 	var root: Node3D = unit["root"]
 	var enemy_root: Node3D = target["root"]
@@ -259,47 +230,11 @@ func update_unit(
 	if kind == "assassin" and distance > 2.0:
 		speed *= 1.20
 
-	# Archers retreat when an enemy gets too close.
-	if kind == "archers" and distance < 4.0:
-		if distance > 0.01:
-			var retreat := direction.normalized()
-			var escape_step := speed * delta * 0.7
-			var new_pos: Vector3 = (
-				root.position - retreat * escape_step
-			)
-
-			# Keep troops inside the battle arena.
-			new_pos.x = clampf(
-				new_pos.x, -23.0, 23.0
-			)
-			new_pos.z = clampf(
-				new_pos.z, -17.0, 17.0
-			)
-
-			moving = (
-				new_pos.distance_to(root.position)
-				> 0.001
-			)
-			root.position = new_pos
-
-	else:
-		var should_advance := distance > reach
-
-		if friendly and order == 1:
-			should_advance = (
-				distance > reach + 3.0
-			)
-
-		if should_advance and distance > 0.01:
-			var step := minf(
-				speed * delta,
-				maxf(0.0, distance - reach)
-			)
-
-			root.position += (
-				direction.normalized() * step
-			)
-			moving = step > 0.001
+	moving = ai.move(unit, target, opponents, allies, delta, order, speed)
+	# Movement can change range; never consume a first-hit bonus before a real hit.
+	direction = enemy_root.position - root.position
+	direction.y = 0.0
+	distance = direction.length()
 
 	if distance > 0.01:
 		root.rotation.y = atan2(
@@ -368,4 +303,5 @@ func update_unit(
 	else:
 		hit(target, damage, kind)
 
+	ai.attack_committed(unit)
 	return moving
