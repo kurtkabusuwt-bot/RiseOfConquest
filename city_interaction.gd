@@ -1,8 +1,8 @@
 
 extends Node
 
-# RISE OF CONQUEST - BUILD 92.0
-# SMART CITY BUILDING MOVEMENT
+# RISE OF CONQUEST - BUILD 93.2
+# PERSISTENT CITY BUILDING LAYOUT
 # Godot 4.4.1 / Android
 
 const HOLD_TIME := 0.55
@@ -39,12 +39,22 @@ func _ready() -> void:
 
 func initialize() -> void:
 	game = get_parent() as Node3D
-	if game == null:
+
+	if not is_instance_valid(game):
 		return
 
 	camera = game.get("camera") as Camera3D
 	create_interface()
+
+	# Wait until the main scene has created its buildings.
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	if not is_instance_valid(game):
+		return
+
 	load_positions()
+	sync_occupied()
 	refresh_labels()
 
 func create_interface() -> void:
@@ -90,7 +100,7 @@ func _process(delta: float) -> void:
 
 	if not is_instance_valid(camera):
 		camera = game.get("camera") as Camera3D
-		if camera == null:
+		if not is_instance_valid(camera):
 			return
 
 	fps_timer += delta
@@ -205,6 +215,7 @@ func update_labels() -> void:
 			continue
 
 		var height := 3.5
+
 		if building_kind(building) == "Merkez":
 			height = 7.0
 		elif building_kind(building) == "Kule":
@@ -241,6 +252,7 @@ func interaction_allowed() -> bool:
 			return false
 
 	var mobile := game.get_node_or_null("MobileMenu90")
+
 	if mobile != null:
 		var panel: Variant = mobile.get("action_panel")
 		if panel is Control and panel.visible:
@@ -256,6 +268,7 @@ func screen_to_ground(pos: Vector2) -> Vector3:
 		return Vector3.INF
 
 	var distance := -origin.y / direction.y
+
 	if distance <= 0.0:
 		return Vector3.INF
 
@@ -299,11 +312,13 @@ func _input(event: InputEvent) -> void:
 			if finger != -1:
 				cancel_press()
 				return
+
 			start_press(event.position, event.index)
 
 		elif event.index == finger:
 			var was_holding := holding
 			finish_press()
+
 			if was_holding:
 				get_viewport().set_input_as_handled()
 
@@ -326,6 +341,7 @@ func _input(event: InputEvent) -> void:
 		elif finger == -2:
 			var was_holding := holding
 			finish_press()
+
 			if was_holding:
 				get_viewport().set_input_as_handled()
 
@@ -349,6 +365,7 @@ func start_press(pos: Vector2, index: int) -> void:
 		return
 
 	var building := find_building(pos)
+
 	if building == null:
 		return
 
@@ -394,8 +411,8 @@ func valid_position(target: Vector3) -> bool:
 			continue
 
 		var distance := Vector2(
-			target.x - other.position.x,
-			target.z - other.position.z
+			target.x - other.global_position.x,
+			target.z - other.global_position.z
 		).length()
 
 		if distance < required_spacing(selected, other):
@@ -408,6 +425,7 @@ func move_building(pos: Vector2) -> void:
 		return
 
 	var ground := screen_to_ground(pos)
+
 	if not ground.is_finite():
 		return
 
@@ -421,6 +439,7 @@ func move_building(pos: Vector2) -> void:
 		return
 
 	var offset := target - selected.position
+
 	if offset.length_squared() < 0.001:
 		return
 
@@ -439,6 +458,8 @@ func move_building(pos: Vector2) -> void:
 
 func finish_press() -> void:
 	if holding and is_instance_valid(selected) and moved:
+		sync_occupied()
+		sync_saved_buildings()
 		save_positions()
 
 	reset_press()
@@ -459,12 +480,52 @@ func reset_press() -> void:
 	if is_instance_valid(game):
 		game.set("dragging", false)
 
-func save_positions() -> void:
+func sync_occupied() -> void:
+	if not is_instance_valid(game):
+		return
+
+	var cells: Array[Vector2i] = []
+
+	for building in get_buildings():
+		cells.append(
+			Vector2i(
+				roundi(building.global_position.x),
+				roundi(building.global_position.z)
+			)
+		)
+
+	game.set("occupied", cells)
+
+func sync_saved_buildings() -> void:
+	if not is_instance_valid(game):
+		return
+
 	var entries: Array[Dictionary] = []
 
 	for building in get_buildings():
 		entries.append({
 			"kind": building_kind(building),
+			"x": roundi(building.position.x),
+			"z": roundi(building.position.z)
+		})
+
+	game.set("buildings_saved", entries)
+
+	if game.has_method("save_game"):
+		game.call("save_game", false)
+
+func save_positions() -> void:
+	var entries: Array[Dictionary] = []
+	var kind_counts: Dictionary = {}
+
+	for building in get_buildings():
+		var kind := building_kind(building)
+		var ordinal := int(kind_counts.get(kind, 0))
+		kind_counts[kind] = ordinal + 1
+
+		entries.append({
+			"kind": kind,
+			"ordinal": ordinal,
 			"x": building.position.x,
 			"z": building.position.z
 		})
@@ -480,6 +541,7 @@ func load_positions() -> void:
 		return
 
 	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+
 	if file == null:
 		return
 
@@ -490,34 +552,54 @@ func load_positions() -> void:
 		return
 
 	var buildings := get_buildings()
-	var used: Dictionary = {}
+	var grouped: Dictionary = {}
+
+	for building in buildings:
+		var kind := building_kind(building)
+
+		if not grouped.has(kind):
+			grouped[kind] = []
+
+		grouped[kind].append(building)
+
+	var legacy_counts: Dictionary = {}
 
 	for entry in data:
 		if not (entry is Dictionary):
 			continue
 
 		var kind := str(entry.get("kind", ""))
-		var target: Node3D = null
 
-		for building in buildings:
-			var id := building.get_instance_id()
-			if building_kind(building) == kind and not used.has(id):
-				target = building
-				used[id] = true
-				break
-
-		if target == null:
+		if not grouped.has(kind):
 			continue
+
+		var ordinal := int(
+			entry.get(
+				"ordinal",
+				legacy_counts.get(kind, 0)
+			)
+		)
+
+		legacy_counts[kind] = ordinal + 1
+
+		var candidates: Array = grouped[kind]
+
+		if ordinal < 0 or ordinal >= candidates.size():
+			continue
+
+		var target: Node3D = candidates[ordinal]
 
 		var new_pos := Vector3(
 			clampf(
 				float(entry.get("x", target.position.x)),
-				-MOVE_LIMIT, MOVE_LIMIT
+				-MOVE_LIMIT,
+				MOVE_LIMIT
 			),
 			target.position.y,
 			clampf(
 				float(entry.get("z", target.position.z)),
-				-MOVE_LIMIT, MOVE_LIMIT
+				-MOVE_LIMIT,
+				MOVE_LIMIT
 			)
 		)
 
@@ -542,7 +624,7 @@ func load_positions() -> void:
 		var offset := new_pos - target.position
 		target.position = new_pos
 
-		if building_kind(target) == "Merkez":
+		if kind == "Merkez":
 			var preview := game.get_node_or_null(
 				"OttomanCityHallPreview"
 			) as Node3D
