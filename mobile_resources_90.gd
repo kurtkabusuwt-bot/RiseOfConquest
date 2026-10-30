@@ -2,8 +2,8 @@
 extends CanvasLayer
 
 # RISE OF CONQUEST
-# MOBILE RESOURCE HUD
-# Android / Godot 4.4
+# RESOURCE HUD - ANDROID FIX
+# Godot 4.4.1
 
 const RESOURCE_PATH := "res://assets/ui/resources/"
 
@@ -35,23 +35,33 @@ var last_screen_size := Vector2.ZERO
 
 
 func _ready() -> void:
-    layer = 90
+    layer = 110
+    visible = true
     game = get_parent()
+
     _build_ui()
     _update_layout()
     _refresh_values()
 
+    set_process(true)
+
+    print("ROC RESOURCE HUD READY")
+
 
 func _make_style() -> StyleBoxFlat:
     var style := StyleBoxFlat.new()
+
     style.bg_color = BG_COLOR
     style.border_color = GOLD_COLOR
-    style.set_border_width_all(1)
-    style.set_corner_radius_all(13)
+
+    style.set_border_width_all(2)
+    style.set_corner_radius_all(12)
+
     style.content_margin_left = 8
     style.content_margin_right = 8
-    style.content_margin_top = 5
-    style.content_margin_bottom = 5
+    style.content_margin_top = 6
+    style.content_margin_bottom = 6
+
     return style
 
 
@@ -63,59 +73,73 @@ func _build_ui() -> void:
     root.set_anchors_and_offsets_preset(
         Control.PRESET_FULL_RECT
     )
+
     root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
     bar = PanelContainer.new()
     bar.name = "ResourceBar"
     root.add_child(bar)
+
     bar.mouse_filter = Control.MOUSE_FILTER_STOP
+
     bar.add_theme_stylebox_override(
         "panel", _make_style()
     )
 
     scroll = ScrollContainer.new()
     scroll.name = "ResourceScroll"
+
     bar.add_child(scroll)
 
     scroll.horizontal_scroll_mode = (
         ScrollContainer.SCROLL_MODE_AUTO
     )
+
     scroll.vertical_scroll_mode = (
         ScrollContainer.SCROLL_MODE_DISABLED
     )
+
     scroll.size_flags_horizontal = (
+        Control.SIZE_EXPAND_FILL
+    )
+
+    scroll.size_flags_vertical = (
         Control.SIZE_EXPAND_FILL
     )
 
     items = HBoxContainer.new()
     items.name = "ResourceItems"
+
     scroll.add_child(items)
+
     items.add_theme_constant_override(
-        "separation", 8
+        "separation", 12
     )
 
     for data in RESOURCE_DATA:
         _add_resource(data)
 
 
-func _load_resource_icon(file_name: String) -> Texture2D:
+func _load_icon(file_name: String) -> Texture2D:
     var path := RESOURCE_PATH + file_name
 
-    var resource := load(path)
-    if resource is Texture2D:
-        return resource as Texture2D
+    var texture := load(path) as Texture2D
 
-    push_error(
-        "RiseOfConquest: Resource icon missing: " + path
-    )
+    if texture != null:
+        print("RESOURCE LOADED: ", path)
+        return texture
 
-    return _create_fallback_icon(file_name)
+    push_warning("RESOURCE ICON MISSING: " + path)
+
+    return _fallback_icon(file_name)
 
 
-func _create_fallback_icon(file_name: String) -> Texture2D:
+func _fallback_icon(file_name: String) -> Texture2D:
     var image := Image.create(
         64, 64, false, Image.FORMAT_RGBA8
     )
+
+    image.fill(Color.TRANSPARENT)
 
     var color := GOLD_COLOR
 
@@ -131,93 +155,99 @@ func _create_fallback_icon(file_name: String) -> Texture2D:
         "gems.png":
             color = Color(0.25, 0.78, 0.95)
 
-    image.fill(Color.TRANSPARENT)
-
     for y in range(64):
         for x in range(64):
             var dx := float(x - 32)
             var dy := float(y - 32)
-            var distance := sqrt(dx * dx + dy * dy)
 
-            if distance < 27.0:
-                var brightness := 1.0 - distance / 90.0
-                image.set_pixel(
-                    x,
-                    y,
-                    Color(
-                        color.r * brightness,
-                        color.g * brightness,
-                        color.b * brightness,
-                        1.0
-                    )
-                )
+            if dx * dx + dy * dy < 729.0:
+                image.set_pixel(x, y, color)
 
     return ImageTexture.create_from_image(image)
 
 
 func _add_resource(data: Dictionary) -> void:
     var item := HBoxContainer.new()
-    item.custom_minimum_size = Vector2(128, 55)
+
+    item.custom_minimum_size = Vector2(135, 54)
+
     item.add_theme_constant_override(
-        "separation", 5
+        "separation", 6
     )
+
     items.add_child(item)
 
     var icon := TextureRect.new()
-    icon.custom_minimum_size = Vector2(34, 34)
+
+    icon.custom_minimum_size = Vector2(36, 36)
+
     icon.expand_mode = (
         TextureRect.EXPAND_IGNORE_SIZE
     )
+
     icon.stretch_mode = (
         TextureRect.STRETCH_KEEP_ASPECT_CENTERED
     )
+
     icon.mouse_filter = (
         Control.MOUSE_FILTER_IGNORE
     )
 
-    icon.texture = _load_resource_icon(
+    icon.texture = _load_icon(
         str(data["file"])
     )
 
     item.add_child(icon)
 
     var texts := VBoxContainer.new()
+
     texts.add_theme_constant_override(
         "separation", 0
     )
+
     item.add_child(texts)
 
     var title := Label.new()
     title.text = str(data["title"])
+
     title.add_theme_font_size_override(
-        "font_size", 10
+        "font_size", 11
     )
+
     title.add_theme_color_override(
         "font_color", MUTED_COLOR
     )
+
     texts.add_child(title)
 
     var amount := Label.new()
     amount.text = "0"
+
     amount.add_theme_font_size_override(
-        "font_size", 17
+        "font_size", 18
     )
+
     amount.add_theme_color_override(
         "font_color", TEXT_COLOR
     )
+
     texts.add_child(amount)
 
     var production := Label.new()
     production.text = "+0/dk"
+
     production.add_theme_font_size_override(
         "font_size", 11
     )
+
     production.add_theme_color_override(
         "font_color", GAIN_COLOR
     )
+
     texts.add_child(production)
 
     var key := str(data["key"])
+
     amounts[key] = amount
     production_labels[key] = production
 
@@ -244,38 +274,36 @@ func _update_layout() -> void:
     var size := (
         get_viewport().get_visible_rect().size
     )
+
     last_screen_size = size
 
+    # Place the resource HUD at the top.
     bar.set_anchors_preset(
         Control.PRESET_TOP_WIDE
     )
-    bar.offset_left = 8
-    bar.offset_right = -8
-    bar.offset_top = 8
-    bar.offset_bottom = 82
 
-    var compact := size.x < 600.0
+    bar.offset_left = 12
+    bar.offset_right = -12
+    bar.offset_top = 12
+    bar.offset_bottom = 94
 
-    if compact:
-        bar.offset_bottom = 76
+    if size.x < 600.0:
+        bar.offset_left = 6
+        bar.offset_right = -6
+        bar.offset_top = 6
+        bar.offset_bottom = 82
+
         items.add_theme_constant_override(
             "separation", 5
         )
     else:
         items.add_theme_constant_override(
-            "separation", 8
+            "separation", 12
         )
 
-    for child in items.get_children():
-        if child is HBoxContainer:
-            if compact:
-                child.custom_minimum_size = (
-                    Vector2(116, 53)
-                )
-            else:
-                child.custom_minimum_size = (
-                    Vector2(128, 55)
-                )
+    bar.visible = true
+    root.visible = true
+    visible = true
 
 
 func _refresh_values() -> void:
@@ -289,7 +317,9 @@ func _refresh_values() -> void:
 
     for data in RESOURCE_DATA:
         var key := str(data["key"])
+
         var label := amounts.get(key) as Label
+
         var production := (
             production_labels.get(key) as Label
         )
@@ -306,12 +336,15 @@ func _refresh_values() -> void:
 
         if key == "gems":
             production.text = "URETIM YOK"
+
             production.add_theme_color_override(
                 "font_color", MUTED_COLOR
             )
+
             continue
 
         var rate := int(rates.get(key, 0))
+
         var production_text := (
             "+" + _format_amount(rate) + "/dk"
         )
