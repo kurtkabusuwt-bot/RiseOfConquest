@@ -1,18 +1,18 @@
 
 extends CanvasLayer
 
-# RISE OF CONQUEST - BUILD 94.1
-# RESOURCE PRODUCTION INDICATORS
+# RISE OF CONQUEST - BUILD 94.4
+# SYNCHRONIZED RESOURCE PRODUCTION HUD
 # Godot 4.4.1 / Android
 
 const RESOURCE_PATH := "res://assets/ui/resources/"
 
 const RESOURCE_DATA := [
-	{"title": "ALTIN", "file": "gold.png", "key": "coins", "building": "house_count", "rate": 3, "base": 1},
-	{"title": "ODUN", "file": "wood.png", "key": "woods", "building": "lumber_count", "rate": 8, "base": 2},
-	{"title": "TAS", "file": "stone.png", "key": "stones", "building": "mine_count", "rate": 6, "base": 0},
-	{"title": "YIYECEK", "file": "food.png", "key": "foods", "building": "farm_count", "rate": 10, "base": 2},
-	{"title": "MUCEVHER", "file": "gems.png", "key": "gems", "building": "", "rate": 0, "base": 0}
+	{"title": "ALTIN", "file": "gold.png", "key": "coins"},
+	{"title": "ODUN", "file": "wood.png", "key": "woods"},
+	{"title": "TAS", "file": "stone.png", "key": "stones"},
+	{"title": "YIYECEK", "file": "food.png", "key": "foods"},
+	{"title": "MUCEVHER", "file": "gems.png", "key": "gems"}
 ]
 
 const BG_COLOR := Color(0.035, 0.065, 0.105, 0.96)
@@ -29,6 +29,7 @@ var items: HBoxContainer
 
 var amounts: Dictionary = {}
 var production_labels: Dictionary = {}
+
 var refresh_timer := 0.0
 var last_screen_size := Vector2.ZERO
 
@@ -62,14 +63,15 @@ func _build_ui() -> void:
 
 	bar = PanelContainer.new()
 	bar.name = "ResourceBar"
+	root.add_child(bar)
 	bar.mouse_filter = Control.MOUSE_FILTER_STOP
 	bar.add_theme_stylebox_override(
 		"panel", _make_style()
 	)
-	root.add_child(bar)
 
 	scroll = ScrollContainer.new()
 	scroll.name = "ResourceScroll"
+	bar.add_child(scroll)
 	scroll.horizontal_scroll_mode = (
 		ScrollContainer.SCROLL_MODE_AUTO
 	)
@@ -79,28 +81,24 @@ func _build_ui() -> void:
 	scroll.size_flags_horizontal = (
 		Control.SIZE_EXPAND_FILL
 	)
-	bar.add_child(scroll)
 
 	items = HBoxContainer.new()
 	items.name = "ResourceItems"
+	scroll.add_child(items)
 	items.add_theme_constant_override(
 		"separation", 8
 	)
-	scroll.add_child(items)
 
 	for data in RESOURCE_DATA:
-		_add_resource(items, data)
+		_add_resource(data)
 
-func _add_resource(
-	parent: HBoxContainer,
-	data: Dictionary
-) -> void:
+func _add_resource(data: Dictionary) -> void:
 	var item := HBoxContainer.new()
 	item.custom_minimum_size = Vector2(128, 55)
 	item.add_theme_constant_override(
 		"separation", 5
 	)
-	parent.add_child(item)
+	items.add_child(item)
 
 	var icon := TextureRect.new()
 	icon.custom_minimum_size = Vector2(34, 34)
@@ -163,13 +161,14 @@ func _add_resource(
 func _process(delta: float) -> void:
 	refresh_timer += delta
 
-	if refresh_timer >= 0.25:
+	if refresh_timer >= 0.5:
 		refresh_timer = 0.0
 		_refresh_values()
 
 	var screen_size := (
 		get_viewport().get_visible_rect().size
 	)
+
 	if screen_size != last_screen_size:
 		_update_layout()
 
@@ -220,6 +219,8 @@ func _refresh_values() -> void:
 	if not is_instance_valid(game):
 		return
 
+	var rates := _get_production_rates()
+
 	for data in RESOURCE_DATA:
 		var key := str(data["key"])
 		var label := amounts.get(key) as Label
@@ -227,46 +228,58 @@ func _refresh_values() -> void:
 			production_labels.get(key) as Label
 		)
 
-		if not is_instance_valid(label):
-			continue
+		if is_instance_valid(label):
+			var value := _read_resource(key)
+			var formatted := _format_amount(value)
 
-		var value := _read_resource(key)
-		var formatted := _format_amount(value)
-
-		if label.text != formatted:
-			label.text = formatted
+			if label.text != formatted:
+				label.text = formatted
 
 		if not is_instance_valid(production):
 			continue
 
-		var building_key := str(
-			data["building"]
-		)
-
-		if building_key.is_empty():
+		if key == "gems":
 			production.text = "URETIM YOK"
 			production.add_theme_color_override(
 				"font_color", MUTED_COLOR
 			)
 			continue
 
-		var building_count := _read_resource(
-			building_key
-		)
-
-		var per_tick := (
-			building_count * int(data["rate"])
-			+ int(data["base"])
-		)
-
-		# main.gd produces resources every 5 seconds.
-		var per_minute := per_tick * 12
+		var rate := int(rates.get(key, 0))
 		var production_text := (
-			"+" + _format_amount(per_minute) + "/dk"
+			"+" + _format_amount(rate) + "/dk"
 		)
 
 		if production.text != production_text:
 			production.text = production_text
+
+func _get_production_rates() -> Dictionary:
+	if not is_instance_valid(game):
+		return {}
+
+	if game.has_method(
+		"get_resource_production_per_minute"
+	):
+		var result: Variant = game.call(
+			"get_resource_production_per_minute"
+		)
+
+		if result is Dictionary:
+			return result
+
+	# Compatibility with older game builds.
+	var houses := _read_resource("house_count")
+	var lumber := _read_resource("lumber_count")
+	var mines := _read_resource("mine_count")
+	var farms := _read_resource("farm_count")
+
+	return {
+		"coins": (houses * 3 + 1) * 12,
+		"woods": (lumber * 8 + 2) * 12,
+		"stones": mines * 6 * 12,
+		"foods": (farms * 10 + 2) * 12,
+		"gems": 0
+	}
 
 func _read_resource(key: String) -> int:
 	if not is_instance_valid(game):
