@@ -1,53 +1,61 @@
 
 extends Node
 
-# RISE OF CONQUEST - BUILD 90.3
-# Legacy main HUD cleanup
+# RISE OF CONQUEST - BUILD 94.7
+# LEGACY HUD CLEANUP
 # Godot 4.4.1 / Android
 
 var game: Node
 var completed := false
 
+const NEW_UI_NAMES := [
+	"MobileResources90",
+	"MobileMenu90",
+	"ConquestInterface15",
+	"HeroMenu"
+]
+
 func _ready() -> void:
 	call_deferred("_setup")
 
 func _setup() -> void:
-	game = get_tree().current_scene
-	if game == null:
+	game = get_parent()
+
+	if not is_instance_valid(game):
 		return
 
-	# Wait for the existing main UI to finish building.
 	await get_tree().process_frame
 	await get_tree().process_frame
 
 	_hide_old_main_hud()
 
 func _hide_old_main_hud() -> void:
-	if game == null:
+	if not is_instance_valid(game):
 		return
 
 	for child in game.get_children():
 		if not child is CanvasLayer:
 			continue
 
-		# Only the original main.gd HUD has an
-		# unnamed CanvasLayer directly under the scene.
+		if child.name in NEW_UI_NAMES:
+			continue
+
 		if child.name.begins_with("@CanvasLayer"):
-			var found_old_hud := false
-
-			for control in child.get_children():
-				if control is Control:
-					if _contains_old_main_ui(control):
-						found_old_hud = true
-						break
-
-			if found_old_hud:
+			if _contains_old_main_ui(child):
 				child.visible = false
 				completed = true
 
 func _contains_old_main_ui(node: Node) -> bool:
 	if node is Label:
-		if "PROTOTIP 1.2" in node.text:
+		var text_value := node.text.to_upper()
+
+		if "RISE OF CONQUEST" in text_value:
+			return true
+
+		if "ALTIN" in text_value and "ODUN" in text_value:
+			return true
+
+		if "PROTOTIP" in text_value:
 			return true
 
 	for child in node.get_children():
