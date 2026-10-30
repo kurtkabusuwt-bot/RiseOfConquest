@@ -1,8 +1,8 @@
 
 extends "res://main.gd"
 
-# RISE OF CONQUEST - BUILD 93.8
-# SAFE LOAD + AUTOMATIC CONSTRUCTION SAVE
+# RISE OF CONQUEST - BUILD 94.2
+# BUILDING COUNTS + SAFE CITY SAVE
 # Godot 4.4.1 / Android
 
 const BUILD_LIMIT_61 := 47.0
@@ -27,49 +27,78 @@ var building_id_counter := 0
 func zoom_camera(delta: float) -> void:
 	if world_mode:
 		camera_distance = clampf(
-			camera_distance + delta,
-			35.0, 155.0
+			camera_distance + delta, 35.0, 155.0
 		)
 	else:
 		camera_distance = clampf(
 			camera_distance + delta,
 			12.0, CAMERA_MAX_61
 		)
-
 	update_camera()
 
 func _kind_from_name(node_name: String) -> String:
 	for kind in BUILDING_SPACING.keys():
 		if node_name == kind:
 			return kind
-
 		if node_name.begins_with("@" + kind + "@"):
 			return kind
-
 		if node_name.begins_with(kind):
 			var suffix := node_name.substr(
 				kind.length()
 			)
-
 			if suffix.is_valid_int():
 				return kind
-
 	return ""
 
 func _all_buildings() -> Array[Node3D]:
 	var result: Array[Node3D] = []
-
-	# Works even before CityInteraction initializes.
 	for child in get_children():
 		if child is Node3D:
 			var building := child as Node3D
-
 			if _kind_from_name(
 				str(building.name)
 			) != "":
 				result.append(building)
-
 	return result
+
+func recount_production_buildings() -> void:
+	var houses := 0
+	var farms := 0
+	var mines := 0
+	var lumber := 0
+	var barracks := 0
+
+	for building in _all_buildings():
+		var kind := _kind_from_name(
+			str(building.name)
+		)
+		match kind:
+			"Ev":
+				houses += 1
+			"Çiftlik":
+				farms += 1
+			"Taşocağı":
+				mines += 1
+			"Kereste":
+				lumber += 1
+			"Kışla":
+				barracks += 1
+
+	house_count = houses
+	farm_count = farms
+	mine_count = mines
+	lumber_count = lumber
+	barracks_count = barracks
+
+func get_resource_production_per_minute() -> Dictionary:
+	recount_production_buildings()
+	return {
+		"coins": (house_count * 3 + 1) * 12,
+		"woods": (lumber_count * 8 + 2) * 12,
+		"stones": mine_count * 6 * 12,
+		"foods": (farm_count * 10 + 2) * 12,
+		"gems": 0
+	}
 
 func construction_spacing(
 	kind_a: String,
@@ -86,10 +115,8 @@ func construction_check(
 ) -> String:
 	if absf(position.x) > BUILD_LIMIT_61:
 		return "Sehir siniri disinda."
-
 	if absf(position.z) > BUILD_LIMIT_61:
 		return "Sehir siniri disinda."
-
 	if not BUILDING_SPACING.has(kind):
 		return "Gecersiz bina turu."
 
@@ -97,11 +124,9 @@ func construction_check(
 		var other_kind := _kind_from_name(
 			str(building.name)
 		)
-
 		var spacing := construction_spacing(
 			kind, other_kind
 		)
-
 		var distance := Vector2(
 			position.x - building.global_position.x,
 			position.z - building.global_position.z
@@ -138,9 +163,7 @@ func _screen_to_ground(
 	if not is_instance_valid(camera):
 		return Vector3.INF
 
-	var origin := camera.project_ray_origin(
-		screen_pos
-	)
+	var origin := camera.project_ray_origin(screen_pos)
 	var direction := camera.project_ray_normal(
 		screen_pos
 	)
@@ -149,12 +172,10 @@ func _screen_to_ground(
 		return Vector3.INF
 
 	var distance := -origin.y / direction.y
-
 	if distance <= 0.0:
 		return Vector3.INF
 
 	var hit := origin + direction * distance
-
 	return Vector3(
 		float(roundi(hit.x)),
 		0.0,
@@ -169,10 +190,7 @@ func handle_ground_tap(
 		super.handle_ground_tap(screen_pos)
 		return
 
-	var position := _screen_to_ground(
-		screen_pos
-	)
-
+	var position := _screen_to_ground(screen_pos)
 	if not position.is_finite():
 		return
 
@@ -191,9 +209,7 @@ func handle_ground_tap(
 	construction_kind = selected_building
 	construction_pending = true
 
-	status = "%s konumu secildi. INSA ET ile onayla." % (
-		selected_building
-	)
+	status = "%s konumu secildi. INSA ET ile onayla." % selected_building
 	update_ui()
 
 func _construction_cost_problem(
@@ -220,7 +236,6 @@ func _construction_cost_problem(
 				return "Yeterli altin yok."
 		_:
 			return "Gecersiz bina turu."
-
 	return ""
 
 func _pay_construction_cost(
@@ -242,7 +257,6 @@ func _pay_construction_cost(
 
 func _next_building_id() -> String:
 	building_id_counter += 1
-
 	return "building_%s_%s" % [
 		str(Time.get_unix_time_from_system()),
 		str(building_id_counter)
@@ -255,12 +269,10 @@ func _building_id_exists(
 	for building in _all_buildings():
 		if building == excluded:
 			continue
-
 		if str(building.get_meta(
 			"building_id", ""
 		)) == id:
 			return true
-
 	return false
 
 func ensure_building_id(
@@ -270,9 +282,7 @@ func ensure_building_id(
 		return ""
 
 	var existing := str(
-		building.get_meta(
-			"building_id", ""
-		)
+		building.get_meta("building_id", "")
 	)
 
 	if not existing.is_empty():
@@ -282,16 +292,12 @@ func ensure_building_id(
 			return existing
 
 	var new_id := _next_building_id()
-
 	while _building_id_exists(
 		new_id, building
 	):
 		new_id = _next_building_id()
 
-	building.set_meta(
-		"building_id", new_id
-	)
-
+	building.set_meta("building_id", new_id)
 	return new_id
 
 func ensure_all_building_ids() -> void:
@@ -310,26 +316,19 @@ func _find_building_at(
 			str(building.name)
 		) != kind:
 			continue
-
 		if building.position.distance_to(
 			position
 		) < 0.1:
 			return building
-
 	return null
 
 func _sync_occupied_cells() -> void:
 	occupied.clear()
-
 	for building in _all_buildings():
 		occupied.append(
 			Vector2i(
-				roundi(
-					building.position.x
-				),
-				roundi(
-					building.position.z
-				)
+				roundi(building.position.x),
+				roundi(building.position.z)
 			)
 		)
 
@@ -340,7 +339,6 @@ func _rebuild_saved_buildings() -> void:
 		var kind := _kind_from_name(
 			str(building.name)
 		)
-
 		if kind == "Merkez":
 			continue
 
@@ -355,24 +353,17 @@ func _rebuild_saved_buildings() -> void:
 
 func _save_city_state() -> void:
 	ensure_all_building_ids()
+	recount_production_buildings()
 	_sync_occupied_cells()
 	_rebuild_saved_buildings()
-
-	# Save the main game state first.
 	save_game(false)
 
-	# Save the supplementary city layout.
 	var interaction := get_node_or_null(
 		"CityInteraction"
 	)
-
 	if interaction != null:
-		if interaction.has_method(
-			"save_positions"
-		):
-			interaction.call(
-				"save_positions"
-			)
+		if interaction.has_method("save_positions"):
+			interaction.call("save_positions")
 
 func confirm_construction() -> void:
 	if not construction_pending:
@@ -396,7 +387,6 @@ func confirm_construction() -> void:
 	var problem := construction_check(
 		kind, position
 	)
-
 	if not problem.is_empty():
 		clear_construction_pending()
 		status = problem
@@ -406,7 +396,6 @@ func confirm_construction() -> void:
 	var cost_problem := _construction_cost_problem(
 		kind
 	)
-
 	if not cost_problem.is_empty():
 		status = cost_problem
 		update_ui()
@@ -418,7 +407,6 @@ func confirm_construction() -> void:
 	var building := _find_building_at(
 		kind, position
 	)
-
 	if is_instance_valid(building):
 		ensure_building_id(building)
 
@@ -433,20 +421,16 @@ func reject_construction() -> void:
 	status = "Bina konumu secimi iptal edildi."
 	update_ui()
 
-# BUILD 93.8 - SAFE GAME LOADING
-
 func load_game() -> void:
-	if not FileAccess.file_exists(
-		SAVE_PATH
-	):
+	if not FileAccess.file_exists(SAVE_PATH):
+		recount_production_buildings()
 		return
 
 	var file := FileAccess.open(
-		SAVE_PATH,
-		FileAccess.READ
+		SAVE_PATH, FileAccess.READ
 	)
-
 	if file == null:
+		recount_production_buildings()
 		return
 
 	var parsed: Variant = JSON.parse_string(
@@ -455,6 +439,7 @@ func load_game() -> void:
 	file.close()
 
 	if not (parsed is Dictionary):
+		recount_production_buildings()
 		return
 
 	var data: Dictionary = parsed
@@ -487,34 +472,21 @@ func load_game() -> void:
 			]:
 				continue
 
-			var x := int(
-				entry.get("x", 0)
-			)
-			var z := int(
-				entry.get("z", 0)
-			)
+			var x := int(entry.get("x", 0))
+			var z := int(entry.get("z", 0))
 
-			if absi(x) > 47:
+			if absi(x) > 47 or absi(z) > 47:
 				continue
 
-			if absi(z) > 47:
-				continue
-
-			var position := Vector3(
-				x, 0, z
-			)
-
+			var position := Vector3(x, 0, z)
 			var saved_id := str(
 				entry.get("id", "")
 			)
 
-			# Do not load the same ID twice.
 			if not saved_id.is_empty():
 				if loaded_ids.has(saved_id):
 					continue
 
-			# Do not create duplicate buildings
-			# at identical positions.
 			var position_key := (
 				str(x) + ":" + str(z)
 			)
@@ -531,14 +503,11 @@ func load_game() -> void:
 			if existing != null:
 				continue
 
-			create_building(
-				kind, position
-			)
+			create_building(kind, position)
 
 			var building := _find_building_at(
 				kind, position
 			)
-
 			if building == null:
 				continue
 
@@ -547,8 +516,7 @@ func load_game() -> void:
 					saved_id, building
 				):
 					building.set_meta(
-						"building_id",
-						saved_id
+						"building_id", saved_id
 					)
 
 			var final_id := ensure_building_id(
@@ -566,18 +534,16 @@ func load_game() -> void:
 			})
 
 	ruler.position.x = clampf(
-		float(data.get(
-			"ruler_x", 3.0
-		)),
+		float(data.get("ruler_x", 3.0)),
 		-14.0, 14.0
 	)
-
 	ruler.position.z = clampf(
-		float(data.get(
-			"ruler_z", 4.0
-		)),
+		float(data.get("ruler_z", 4.0)),
 		-14.0, 14.0
 	)
 
+	ensure_all_building_ids()
+	recount_production_buildings()
 	_sync_occupied_cells()
+
 	status = "Kayitli sehrin yuklendi."
