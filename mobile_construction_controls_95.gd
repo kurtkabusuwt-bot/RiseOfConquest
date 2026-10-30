@@ -1,8 +1,8 @@
 
 extends CanvasLayer
 
-# RISE OF CONQUEST - BUILD 95.6
-# CONSTRUCTION COST AND RESOURCE PANEL
+# RISE OF CONQUEST - BUILD 95.8
+# MOBILE CONSTRUCTION REPOSITION
 # Godot 4.4.1 / Android
 
 const PANEL_COLOR := Color(0.035, 0.065, 0.105, 0.96)
@@ -10,6 +10,7 @@ const GOLD_COLOR := Color(0.91, 0.72, 0.39)
 const TEXT_COLOR := Color(0.95, 0.95, 0.96)
 const GREEN_COLOR := Color(0.24, 0.67, 0.43)
 const RED_COLOR := Color(0.75, 0.28, 0.27)
+const BLUE_COLOR := Color(0.20, 0.47, 0.75)
 
 const BUILDING_COSTS := {
     "Ev": {"woods": 100},
@@ -31,6 +32,7 @@ var resource_label: Label
 var status_label: Label
 
 var confirm_button: Button
+var reposition_button: Button
 var cancel_button: Button
 
 var refresh_elapsed := 0.0
@@ -39,7 +41,6 @@ var refresh_elapsed := 0.0
 func _ready() -> void:
     layer = 105
     game = get_parent()
-
     _build_ui()
     _refresh_ui()
     set_process(true)
@@ -114,10 +115,10 @@ func _build_ui() -> void:
         Control.PRESET_CENTER_BOTTOM
     )
 
-    panel.custom_minimum_size = Vector2(330, 220)
+    panel.custom_minimum_size = Vector2(330, 275)
     panel.offset_left = -165
     panel.offset_right = 165
-    panel.offset_top = -275
+    panel.offset_top = -330
     panel.offset_bottom = -55
 
     var style := StyleBoxFlat.new()
@@ -168,23 +169,29 @@ func _build_ui() -> void:
     status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     layout.add_child(status_label)
 
-    var buttons := HBoxContainer.new()
-    buttons.add_theme_constant_override(
+    var action_row := HBoxContainer.new()
+    action_row.add_theme_constant_override(
         "separation", 10
     )
-    layout.add_child(buttons)
+    layout.add_child(action_row)
 
     confirm_button = _make_button(
         "INSA ET", GREEN_COLOR
     )
     confirm_button.pressed.connect(_confirm)
-    buttons.add_child(confirm_button)
+    action_row.add_child(confirm_button)
 
     cancel_button = _make_button(
         "IPTAL", RED_COLOR
     )
     cancel_button.pressed.connect(_cancel)
-    buttons.add_child(cancel_button)
+    action_row.add_child(cancel_button)
+
+    reposition_button = _make_button(
+        "YER DEGISTIR", BLUE_COLOR
+    )
+    reposition_button.pressed.connect(_reposition)
+    layout.add_child(reposition_button)
 
     panel.visible = false
 
@@ -362,7 +369,6 @@ func _refresh_ui() -> void:
         )
         return
 
-    # Use the game's authoritative cost check too.
     if game.has_method("_construction_cost_problem"):
         var game_cost_problem := str(
             game.call(
@@ -397,6 +403,32 @@ func _confirm() -> void:
 
     if game.has_method("confirm_construction"):
         game.call("confirm_construction")
+
+    _refresh_ui()
+
+
+func _reposition() -> void:
+    if not _is_pending():
+        return
+
+    if not game.has_method(
+        "clear_construction_pending"
+    ):
+        return
+
+    var kind := str(game.get("selected_building"))
+
+    game.call("clear_construction_pending")
+
+    # Keep construction placement mode active.
+    game.set("placing", true)
+    game.set("status", (
+        "%s icin yeni konum sec."
+        % kind
+    ))
+
+    if game.has_method("update_ui"):
+        game.call("update_ui")
 
     _refresh_ui()
 
