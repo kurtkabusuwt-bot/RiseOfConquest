@@ -1,8 +1,9 @@
-
 extends RefCounted
 
 # RISE OF CONQUEST - SIEGE EFFECTS 7.0
 # Godot 4.4.1 / Android
+
+var damage_modifier: Callable
 
 var wall_hp := 160.0
 var wall_max := 160.0
@@ -176,6 +177,8 @@ func damage(amount: float) -> void:
 	if wall_destroyed:
 		return
 
+	if damage_modifier.is_valid():
+		amount = float(damage_modifier.call(amount))
 	wall_hp = maxf(0.0, wall_hp - maxf(0.0, amount))
 	update_damage_visuals()
 
