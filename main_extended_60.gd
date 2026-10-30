@@ -1,8 +1,8 @@
 
 extends "res://main.gd"
 
-# RISE OF CONQUEST - BUILD 92.7
-# CONFIRMED CONSTRUCTION SYSTEM
+# RISE OF CONQUEST - BUILD 93.0
+# CONSTRUCTION VALIDATION AND CONFIRMATION
 # Godot 4.4.1 / Android
 
 const BUILD_LIMIT_61 := 47.0
@@ -26,9 +26,7 @@ var construction_kind := ""
 func zoom_camera(delta: float) -> void:
 	if world_mode:
 		camera_distance = clampf(
-			camera_distance + delta,
-			35.0,
-			155.0
+			camera_distance + delta, 35.0, 155.0
 		)
 	else:
 		camera_distance = clampf(
@@ -72,8 +70,7 @@ func construction_check(
 			)
 
 			var spacing := construction_spacing(
-				kind,
-				other_kind
+				kind, other_kind
 			)
 
 			var distance := Vector2(
@@ -84,10 +81,10 @@ func construction_check(
 			if distance < spacing:
 				return "Bina cok yakin. Baska konum sec."
 
+	# Existing occupied cells are also checked.
 	for cell in occupied:
 		var distance := Vector2(
-			position.x,
-			position.z
+			position.x, position.z
 		).distance_to(Vector2(cell))
 
 		if distance < 4.5:
@@ -115,46 +112,53 @@ func get_construction_pending() -> bool:
 func get_construction_position() -> Vector3:
 	return construction_position
 
+func _screen_to_ground(
+	screen_pos: Vector2
+) -> Vector3:
+	if not is_instance_valid(camera):
+		return Vector3.INF
+
+	var origin := camera.project_ray_origin(screen_pos)
+	var direction := camera.project_ray_normal(screen_pos)
+
+	if absf(direction.y) < 0.0001:
+		return Vector3.INF
+
+	var distance := -origin.y / direction.y
+
+	if distance <= 0.0:
+		return Vector3.INF
+
+	var hit := origin + direction * distance
+
+	return Vector3(
+		float(roundi(hit.x)),
+		0.0,
+		float(roundi(hit.z))
+	)
+
 func handle_ground_tap(screen_pos: Vector2) -> void:
 	if not placing or world_mode or ruler_mode or battle_active:
 		clear_construction_pending()
 		super.handle_ground_tap(screen_pos)
 		return
 
-	if not is_instance_valid(camera):
+	var position := _screen_to_ground(screen_pos)
+
+	if not position.is_finite():
 		return
-
-	var ray_origin := camera.project_ray_origin(screen_pos)
-	var ray_direction := camera.project_ray_normal(screen_pos)
-
-	if absf(ray_direction.y) < 0.0001:
-		return
-
-	var distance := -ray_origin.y / ray_direction.y
-
-	if distance <= 0.0:
-		return
-
-	var hit := ray_origin + ray_direction * distance
-
-	var grid_pos := Vector3(
-		float(roundi(hit.x)),
-		0.0,
-		float(roundi(hit.z))
-	)
 
 	var problem := construction_check(
-		selected_building,
-		grid_pos
+		selected_building, position
 	)
 
-	if problem != "":
+	if not problem.is_empty():
 		clear_construction_pending()
 		status = problem
 		update_ui()
 		return
 
-	construction_position = grid_pos
+	construction_position = position
 	construction_screen_position = screen_pos
 	construction_kind = selected_building
 	construction_pending = true
@@ -163,6 +167,46 @@ func handle_ground_tap(screen_pos: Vector2) -> void:
 		selected_building
 	)
 	update_ui()
+
+func _construction_cost_problem(kind: String) -> String:
+	match kind:
+		"Ev":
+			if woods < 100:
+				return "Yeterli odun yok."
+		"Kışla":
+			if woods < 200:
+				return "Yeterli odun yok."
+		"Çiftlik":
+			if woods < 80:
+				return "Yeterli odun yok."
+		"Taşocağı":
+			if woods < 100:
+				return "Yeterli odun yok."
+		"Kereste":
+			if coins < 100:
+				return "Yeterli altin yok."
+		"Kule":
+			if coins < 150:
+				return "Yeterli altin yok."
+		_:
+			return "Gecersiz bina turu."
+
+	return ""
+
+func _pay_construction_cost(kind: String) -> void:
+	match kind:
+		"Ev":
+			woods -= 100
+		"Kışla":
+			woods -= 200
+		"Çiftlik":
+			woods -= 80
+		"Taşocağı":
+			woods -= 100
+		"Kereste":
+			coins -= 100
+		"Kule":
+			coins -= 150
 
 func confirm_construction() -> void:
 	if not construction_pending:
@@ -180,62 +224,42 @@ func confirm_construction() -> void:
 		update_ui()
 		return
 
-	var problem := construction_check(
-		construction_kind,
-		construction_position
-	)
+	var position := construction_position
+	var kind := construction_kind
 
-	if problem != "":
+	var problem := construction_check(kind, position)
+
+	if not problem.is_empty():
 		clear_construction_pending()
 		status = problem
 		update_ui()
 		return
 
-	# Recheck the actual ray at confirmation time.
-	# This prevents placing at a stale camera position.
-	if not is_instance_valid(camera):
-		return
+	var cost_problem := _construction_cost_problem(kind)
 
-	var ray_origin := camera.project_ray_origin(
-		construction_screen_position
-	)
-	var ray_direction := camera.project_ray_normal(
-		construction_screen_position
-	)
-
-	if absf(ray_direction.y) < 0.0001:
-		clear_construction_pending()
-		return
-
-	var distance := -ray_origin.y / ray_direction.y
-
-	if distance <= 0.0:
-		clear_construction_pending()
-		return
-
-	var hit := ray_origin + ray_direction * distance
-
-	var actual_position := Vector3(
-		float(roundi(hit.x)),
-		0.0,
-		float(roundi(hit.z))
-	)
-
-	if actual_position.distance_to(
-		construction_position
-	) > 0.1:
-		clear_construction_pending()
-		status = "Kamera degisti. Konumu tekrar sec."
+	if not cost_problem.is_empty():
+		status = cost_problem
 		update_ui()
 		return
 
-	var saved_screen_pos := construction_screen_position
+	# Charge only after validation and confirmation.
+	_pay_construction_cost(kind)
+
+	# Create at the exact confirmed world position.
+	create_building(kind, position)
+
+	buildings_saved.append({
+		"kind": kind,
+		"x": int(position.x),
+		"z": int(position.z)
+	})
 
 	clear_construction_pending()
 
-	# The base implementation performs the actual
-	# resource deduction, creation, and saving.
-	super.handle_ground_tap(saved_screen_pos)
+	save_game(false)
+
+	status = "%s insa edildi!" % kind
+	update_ui()
 
 func reject_construction() -> void:
 	clear_construction_pending()
