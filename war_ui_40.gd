@@ -1,4 +1,3 @@
-
 extends RefCounted
 
 # RISE OF CONQUEST - WAR UI 4.0
@@ -95,6 +94,7 @@ func build(war: Node) -> void:
 		"EMIR DEGISTIR",
 		war.next_order
 	)
+
 	hud.visible = false
 
 func update(

@@ -1,4 +1,3 @@
-
 extends RefCounted
 
 # RISE OF CONQUEST - COMBAT ENGINE 5.0
@@ -7,6 +6,9 @@ extends RefCounted
 # assassin critical hits, siege targeting.
 
 var shots: Array[Dictionary] = []
+
+# Optional battle-local modifier. Existing callers retain the original behavior.
+var attack_damage_modifier: Callable
 var fallen_blue := 0
 var fallen_red := 0
 
@@ -347,6 +349,11 @@ func update_unit(
 			cavalry_charges += 1
 			unit["charge_ready"] = false
 
+	# Keep the wall branch unmodified here: Siege.damage applies its bonus once.
+	var wall_damage := damage * 0.6
+	if attack_damage_modifier.is_valid():
+		damage = float(attack_damage_modifier.call(unit, damage))
+
 	if kind == "archers" or kind == "siege":
 		shoot(
 			parent,
@@ -357,7 +364,7 @@ func update_unit(
 		)
 
 		if friendly and kind == "siege":
-			siege_callback.call(damage * 0.6)
+			siege_callback.call(wall_damage)
 	else:
 		hit(target, damage, kind)
 
