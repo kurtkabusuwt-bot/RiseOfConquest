@@ -1,8 +1,8 @@
 
 extends CanvasLayer
 
-# RISE OF CONQUEST - BUILD 95.5
-# CONSTRUCTION VALIDATION PANEL
+# RISE OF CONQUEST - BUILD 95.6
+# CONSTRUCTION COST AND RESOURCE PANEL
 # Godot 4.4.1 / Android
 
 const PANEL_COLOR := Color(0.035, 0.065, 0.105, 0.96)
@@ -10,14 +10,26 @@ const GOLD_COLOR := Color(0.91, 0.72, 0.39)
 const TEXT_COLOR := Color(0.95, 0.95, 0.96)
 const GREEN_COLOR := Color(0.24, 0.67, 0.43)
 const RED_COLOR := Color(0.75, 0.28, 0.27)
-const BLUE_COLOR := Color(0.20, 0.65, 0.95)
+
+const BUILDING_COSTS := {
+    "Ev": {"woods": 100},
+    "Kışla": {"woods": 200},
+    "Çiftlik": {"woods": 80},
+    "Taşocağı": {"woods": 100},
+    "Kereste": {"coins": 100},
+    "Kule": {"coins": 150}
+}
 
 var game: Node
 var panel: PanelContainer
+
 var title_label: Label
 var building_label: Label
 var position_label: Label
+var cost_label: Label
+var resource_label: Label
 var status_label: Label
+
 var confirm_button: Button
 var cancel_button: Button
 
@@ -27,6 +39,7 @@ var refresh_elapsed := 0.0
 func _ready() -> void:
     layer = 105
     game = get_parent()
+
     _build_ui()
     _refresh_ui()
     set_process(true)
@@ -100,12 +113,12 @@ func _build_ui() -> void:
     panel.set_anchors_preset(
         Control.PRESET_CENTER_BOTTOM
     )
-    panel.custom_minimum_size = Vector2(320, 170)
 
-    panel.offset_left = -160
-    panel.offset_right = 160
-    panel.offset_top = -220
-    panel.offset_bottom = -50
+    panel.custom_minimum_size = Vector2(330, 220)
+    panel.offset_left = -165
+    panel.offset_right = 165
+    panel.offset_top = -275
+    panel.offset_bottom = -55
 
     var style := StyleBoxFlat.new()
     style.bg_color = PANEL_COLOR
@@ -130,7 +143,7 @@ func _build_ui() -> void:
     layout.add_child(title_label)
 
     building_label = _make_label(
-        "Bina", 15, TEXT_COLOR
+        "Bina: -", 15, TEXT_COLOR
     )
     layout.add_child(building_label)
 
@@ -139,8 +152,18 @@ func _build_ui() -> void:
     )
     layout.add_child(position_label)
 
+    cost_label = _make_label(
+        "Maliyet: -", 14, GOLD_COLOR
+    )
+    layout.add_child(cost_label)
+
+    resource_label = _make_label(
+        "Mevcut kaynak: -", 13, TEXT_COLOR
+    )
+    layout.add_child(resource_label)
+
     status_label = _make_label(
-        "Kontrol ediliyor", 12, BLUE_COLOR
+        "Kontrol ediliyor", 12, GREEN_COLOR
     )
     status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     layout.add_child(status_label)
@@ -180,12 +203,102 @@ func _is_pending() -> bool:
     if not is_instance_valid(game):
         return false
 
-    if not game.has_method("get_construction_pending"):
+    if not game.has_method(
+        "get_construction_pending"
+    ):
         return false
 
     return bool(
         game.call("get_construction_pending")
     )
+
+
+func _resource_name(key: String) -> String:
+    match key:
+        "coins":
+            return "Altin"
+        "woods":
+            return "Odun"
+        "stones":
+            return "Tas"
+        "foods":
+            return "Yiyecek"
+        _:
+            return key
+
+
+func _resource_amount(key: String) -> int:
+    if not is_instance_valid(game):
+        return 0
+
+    return int(game.get(key))
+
+
+func _get_cost_problem(kind: String) -> String:
+    if not BUILDING_COSTS.has(kind):
+        return "Gecersiz bina turu"
+
+    var costs: Dictionary = BUILDING_COSTS[kind]
+
+    for resource_key in costs.keys():
+        var key := str(resource_key)
+        var required := int(costs[key])
+        var available := _resource_amount(key)
+
+        if available < required:
+            var missing := required - available
+            return (
+                "%s eksik: %d"
+                % [_resource_name(key), missing]
+            )
+
+    return ""
+
+
+func _update_cost_display(kind: String) -> void:
+    if not BUILDING_COSTS.has(kind):
+        cost_label.text = "Maliyet: Bilinmiyor"
+        resource_label.text = "Kaynak bilgisi yok"
+        return
+
+    var costs: Dictionary = BUILDING_COSTS[kind]
+
+    var cost_parts: PackedStringArray = []
+    var balance_parts: PackedStringArray = []
+
+    for resource_key in costs.keys():
+        var key := str(resource_key)
+        var required := int(costs[key])
+        var available := _resource_amount(key)
+        var name := _resource_name(key)
+
+        cost_parts.append(
+            "%d %s" % [required, name]
+        )
+
+        balance_parts.append(
+            "%s: %d" % [name, available]
+        )
+
+    cost_label.text = (
+        "Maliyet: " + ", ".join(cost_parts)
+    )
+
+    resource_label.text = (
+        "Mevcut: " + ", ".join(balance_parts)
+    )
+
+
+func _set_status(
+    message: String,
+    color: Color,
+    can_build: bool
+) -> void:
+    status_label.text = message
+    status_label.add_theme_color_override(
+        "font_color", color
+    )
+    confirm_button.disabled = not can_build
 
 
 func _refresh_ui() -> void:
@@ -203,20 +316,27 @@ func _refresh_ui() -> void:
 
     var position := Vector3.ZERO
 
-    if game.has_method("get_construction_position"):
+    if game.has_method(
+        "get_construction_position"
+    ):
         position = game.call(
             "get_construction_position"
         )
 
     position_label.text = (
         "Konum: X %d  |  Z %d"
-        % [roundi(position.x), roundi(position.z)]
+        % [
+            roundi(position.x),
+            roundi(position.z)
+        ]
     )
 
-    var problem := ""
+    _update_cost_display(kind)
+
+    var placement_problem := ""
 
     if game.has_method("construction_check"):
-        problem = str(
+        placement_problem = str(
             game.call(
                 "construction_check",
                 kind,
@@ -224,18 +344,46 @@ func _refresh_ui() -> void:
             )
         )
 
-    if problem.is_empty():
-        status_label.text = "Konum uygun - Insaat hazir"
-        status_label.add_theme_color_override(
-            "font_color", GREEN_COLOR
+    if not placement_problem.is_empty():
+        _set_status(
+            "Konum uygun degil: " + placement_problem,
+            RED_COLOR,
+            false
         )
-        confirm_button.disabled = false
-    else:
-        status_label.text = "Uygun degil: " + problem
-        status_label.add_theme_color_override(
-            "font_color", RED_COLOR
+        return
+
+    var cost_problem := _get_cost_problem(kind)
+
+    if not cost_problem.is_empty():
+        _set_status(
+            cost_problem,
+            RED_COLOR,
+            false
         )
-        confirm_button.disabled = true
+        return
+
+    # Use the game's authoritative cost check too.
+    if game.has_method("_construction_cost_problem"):
+        var game_cost_problem := str(
+            game.call(
+                "_construction_cost_problem",
+                kind
+            )
+        )
+
+        if not game_cost_problem.is_empty():
+            _set_status(
+                game_cost_problem,
+                RED_COLOR,
+                false
+            )
+            return
+
+    _set_status(
+        "Konum ve kaynaklar uygun - Insaat hazir",
+        GREEN_COLOR,
+        true
+    )
 
 
 func _confirm() -> void:
