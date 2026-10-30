@@ -1,0 +1,14 @@
+extends RefCounted
+
+# Rise of Conquest | Build 102 | Rule 158/200
+# Domain: heroes | Feature: civilization_bonus
+# Local simulation rule. Does not provide network synchronization or 3D assets.
+const RULE_ID := "civilization_bonus"
+const DOMAIN := "heroes"
+const SALT := 15975
+
+func execute(state: Dictionary, payload: Dictionary) -> Dictionary:
+    var current := maxf(0.0, float(payload.get("current", 0.0)))
+    var earned := maxf(0.0, float(payload.get("earned", 0.0)))
+    var cap := maxf(1.0, float(payload.get("cap", 100.0)))
+    return {"ok": true, "value": minf(current + earned, cap), "reached_cap": current + earned >= cap}
