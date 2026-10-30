@@ -1,6 +1,4 @@
-
-[gd_scene load_steps=26 format=3]
-
+[gd_scene load_steps=29 format=3]
 [ext_resource type="Script" path="res://main_extended_60.gd" id="1"]
 [ext_resource type="Script" path="res://conquest_14.gd" id="2"]
 [ext_resource type="Script" path="res://conquest_15.gd" id="3"]
@@ -26,6 +24,10 @@
 [ext_resource type="Script" path="res://mobile_touch_guard_95.gd" id="23"]
 [ext_resource type="Script" path="res://construction_notification_95.gd" id="24"]
 [ext_resource type="Script" path="res://construction_manager_97.gd" id="25"]
+[ext_resource type="Script" path="res://build101/kingdom_bridge_101.gd" id="26"]
+[ext_resource type="Script" path="res://build101/kingdom_map_ui_101.gd" id="27"]
+
+[ext_resource type="Script" path="res://build102/build102_bridge.gd" id="28"]
 
 [node name="RiseOfConquest" type="Node3D"]
 script = ExtResource("1")
@@ -101,3 +103,12 @@ script = ExtResource("24")
 
 [node name="ConstructionManager97" type="CanvasLayer" parent="."]
 script = ExtResource("25")
+
+[node name="KingdomBridge101" type="Node" parent="."]
+script = ExtResource("26")
+
+[node name="KingdomMapUI101" type="CanvasLayer" parent="."]
+script = ExtResource("27")
+
+[node name="Build102Bridge" type="Node" parent="."]
+script = ExtResource("28")
