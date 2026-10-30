@@ -1,8 +1,8 @@
 
 extends Node
 
-# RISE OF CONQUEST - BUILD 91.1
-# CENTRAL MOBILE UI MANAGER
+# RISE OF CONQUEST - BUILD 91.8
+# CENTRAL MOBILE UI COORDINATOR
 # Godot 4.4.1 / Android
 
 const LEGACY_BUTTONS := [
@@ -12,7 +12,18 @@ const LEGACY_BUTTONS := [
 	"KRALLIK 4.5",
 	"KAHRAMANLAR",
 	"KOMUTANLAR",
-	"BINA ISIMLERI"
+	"BINA ISIMLERI",
+	"SAVAS 4.0"
+]
+
+const MODULE_NAMES := [
+	"ConquestExpansion",
+	"ConquestInterface15",
+	"ArmyUpgrade30",
+	"WarExpansion45",
+	"HeroMenu",
+	"WarConquest31",
+	"CityInteraction"
 ]
 
 var game: Node
@@ -34,7 +45,7 @@ func _initialize() -> void:
 	_hide_old_buttons()
 
 func _process(delta: float) -> void:
-	if game == null:
+	if not is_instance_valid(game):
 		return
 
 	refresh_timer += delta
@@ -44,58 +55,16 @@ func _process(delta: float) -> void:
 		_hide_old_buttons()
 
 func _hide_old_buttons() -> void:
-	# Existing game logic stays active.
-	# Only legacy launcher buttons are hidden.
-
-	_hide_buttons_recursive(
-		game.get_node_or_null("ConquestInterface15")
-	)
-
-	_hide_buttons_recursive(
-		game.get_node_or_null("HeroMenu")
-	)
-
-	_hide_module_canvas("ConquestExpansion", "canvas")
-	_hide_module_canvas("ArmyUpgrade30", "ui")
-	_hide_module_canvas("WarExpansion45", "canvas")
-	_hide_module_canvas("WarConquest31", "commander_canvas")
-
-	var interaction := game.get_node_or_null("CityInteraction")
-
-	if interaction != null:
-		var names: Variant = interaction.get("names_button")
-		if names is Button:
-			names.visible = false
-
-func _hide_module_canvas(
-	module_name: String,
-	property_name: String
-) -> void:
-	var module := game.get_node_or_null(module_name)
-
-	if module == null:
+	if not is_instance_valid(game):
 		return
 
-	var properties := module.get_property_list()
-	var found := false
+	for module_name in MODULE_NAMES:
+		var module := game.get_node_or_null(module_name)
 
-	for property in properties:
-		if str(property.get("name", "")) == property_name:
-			found = true
-			break
-
-	if not found:
-		return
-
-	var canvas: Variant = module.get(property_name)
-
-	if canvas is Node:
-		_hide_buttons_recursive(canvas)
+		if module != null:
+			_hide_buttons_recursive(module)
 
 func _hide_buttons_recursive(parent: Node) -> void:
-	if parent == null:
-		return
-
 	for child in parent.get_children():
 		if child is Button:
 			if child.text.strip_edges() in LEGACY_BUTTONS:
@@ -103,28 +72,62 @@ func _hide_buttons_recursive(parent: Node) -> void:
 
 		_hide_buttons_recursive(child)
 
-func _close_active_panel() -> void:
-	if game == null:
+func _hide_module_panel(module_name: String) -> void:
+	var module := game.get_node_or_null(module_name)
+
+	if module == null:
 		return
 
+	for property in module.get_property_list():
+		if str(property.get("name", "")) == "panel":
+			var panel: Variant = module.get("panel")
+
+			if panel is Control:
+				panel.visible = false
+
+			return
+
+func _close_active_panel() -> void:
 	if active_panel == "":
 		return
 
-	var previous := game.get_node_or_null(active_panel)
+	var module := game.get_node_or_null(active_panel)
 
-	if previous != null:
-		var panel: Variant = previous.get("panel")
-
-		if panel is Control:
-			panel.visible = false
-
-		if previous.has_method("close_menu"):
-			previous.call("close_menu")
+	if module != null:
+		if module.has_method("close_menu"):
+			module.call("close_menu")
+		else:
+			_hide_module_panel(active_panel)
 
 	active_panel = ""
+	_hide_old_buttons()
+
+func _close_other_panels(except_name: String) -> void:
+	for module_name in [
+		"HeroMenu",
+		"ArmyUpgrade30",
+		"WarExpansion45"
+	]:
+		if module_name != except_name:
+			_hide_module_panel(module_name)
+
+	var war := game.get_node_or_null("WarConquest31")
+
+	if war != null and except_name != "WarConquest31":
+		var war_ui: Variant = war.get("war_ui")
+
+		if war_ui != null:
+			var war_panel: Variant = war_ui.get("panel")
+
+			if war_panel is Control:
+				war_panel.visible = false
 
 func open_heroes() -> void:
+	if not is_instance_valid(game):
+		return
+
 	_close_active_panel()
+	_close_other_panels("HeroMenu")
 
 	var heroes := game.get_node_or_null("HeroMenu")
 
@@ -135,7 +138,11 @@ func open_heroes() -> void:
 	_hide_old_buttons()
 
 func open_army() -> void:
+	if not is_instance_valid(game):
+		return
+
 	_close_active_panel()
+	_close_other_panels("ArmyUpgrade30")
 
 	var army := game.get_node_or_null("ArmyUpgrade30")
 
@@ -146,16 +153,19 @@ func open_army() -> void:
 
 	if panel is Control:
 		panel.visible = true
+		active_panel = "ArmyUpgrade30"
 
 		if army.has_method("update_info"):
 			army.update_info()
 
-		active_panel = "ArmyUpgrade30"
-
 	_hide_old_buttons()
 
 func open_kingdom() -> void:
+	if not is_instance_valid(game):
+		return
+
 	_close_active_panel()
+	_close_other_panels("WarExpansion45")
 
 	var kingdom := game.get_node_or_null("WarExpansion45")
 
@@ -166,14 +176,17 @@ func open_kingdom() -> void:
 
 	if panel is Control:
 		panel.visible = true
+		active_panel = "WarExpansion45"
 
 		if kingdom.has_method("refresh"):
 			kingdom.refresh()
 
-		active_panel = "WarExpansion45"
-
 	_hide_old_buttons()
 
 func close_all_panels() -> void:
+	if not is_instance_valid(game):
+		return
+
 	_close_active_panel()
+	_close_other_panels("")
 	_hide_old_buttons()
