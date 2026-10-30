@@ -1,10 +1,8 @@
-Dördüncü dosya: tests/test_build_89.gd — yeni dosya.
 
 extends SceneTree
 
 const AI = preload("res://war_ai_89.gd")
 const Combat = preload("res://war_combat_40.gd")
-
 const Abilities = preload("res://hero_abilities.gd")
 const Siege = preload("res://war_siege_40.gd")
 const War = preload("res://war_build_88.gd")
