@@ -1,8 +1,8 @@
 
 extends CanvasLayer
 
-# RISE OF CONQUEST - BUILD 95.4
-# ADVANCED MOBILE CONSTRUCTION PANEL
+# RISE OF CONQUEST - BUILD 95.5
+# CONSTRUCTION VALIDATION PANEL
 # Godot 4.4.1 / Android
 
 const PANEL_COLOR := Color(0.035, 0.065, 0.105, 0.96)
@@ -10,6 +10,7 @@ const GOLD_COLOR := Color(0.91, 0.72, 0.39)
 const TEXT_COLOR := Color(0.95, 0.95, 0.96)
 const GREEN_COLOR := Color(0.24, 0.67, 0.43)
 const RED_COLOR := Color(0.75, 0.28, 0.27)
+const BLUE_COLOR := Color(0.20, 0.65, 0.95)
 
 var game: Node
 var panel: PanelContainer
@@ -26,10 +27,8 @@ var refresh_elapsed := 0.0
 func _ready() -> void:
     layer = 105
     game = get_parent()
-
     _build_ui()
     _refresh_ui()
-
     set_process(true)
 
 
@@ -41,8 +40,12 @@ func _make_label(
     var result := Label.new()
     result.text = value
     result.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    result.add_theme_font_size_override("font_size", font_size)
-    result.add_theme_color_override("font_color", font_color)
+    result.add_theme_font_size_override(
+        "font_size", font_size
+    )
+    result.add_theme_color_override(
+        "font_color", font_color
+    )
     return result
 
 
@@ -66,12 +69,25 @@ func _make_button(
     var pressed_style := normal_style.duplicate() as StyleBoxFlat
     pressed_style.bg_color = button_color.darkened(0.15)
 
-    result.add_theme_stylebox_override("normal", normal_style)
-    result.add_theme_stylebox_override("hover", hover_style)
-    result.add_theme_stylebox_override("pressed", pressed_style)
-    result.add_theme_color_override("font_color", Color.WHITE)
-    result.add_theme_color_override("font_hover_color", Color.WHITE)
-    result.add_theme_color_override("font_pressed_color", Color.WHITE)
+    result.add_theme_stylebox_override(
+        "normal", normal_style
+    )
+    result.add_theme_stylebox_override(
+        "hover", hover_style
+    )
+    result.add_theme_stylebox_override(
+        "pressed", pressed_style
+    )
+
+    result.add_theme_color_override(
+        "font_color", Color.WHITE
+    )
+    result.add_theme_color_override(
+        "font_hover_color", Color.WHITE
+    )
+    result.add_theme_color_override(
+        "font_pressed_color", Color.WHITE
+    )
 
     return result
 
@@ -81,13 +97,15 @@ func _build_ui() -> void:
     panel.name = "ConstructionConfirmPanel"
     add_child(panel)
 
-    panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-    panel.custom_minimum_size = Vector2(320, 164)
+    panel.set_anchors_preset(
+        Control.PRESET_CENTER_BOTTOM
+    )
+    panel.custom_minimum_size = Vector2(320, 170)
 
     panel.offset_left = -160
     panel.offset_right = 160
-    panel.offset_top = -210
-    panel.offset_bottom = -46
+    panel.offset_top = -220
+    panel.offset_bottom = -50
 
     var style := StyleBoxFlat.new()
     style.bg_color = PANEL_COLOR
@@ -96,10 +114,14 @@ func _build_ui() -> void:
     style.set_corner_radius_all(12)
     style.set_content_margin_all(10)
 
-    panel.add_theme_stylebox_override("panel", style)
+    panel.add_theme_stylebox_override(
+        "panel", style
+    )
 
     var layout := VBoxContainer.new()
-    layout.add_theme_constant_override("separation", 6)
+    layout.add_theme_constant_override(
+        "separation", 6
+    )
     panel.add_child(layout)
 
     title_label = _make_label(
@@ -118,12 +140,15 @@ func _build_ui() -> void:
     layout.add_child(position_label)
 
     status_label = _make_label(
-        "Yerlestirmeye hazir", 12, GREEN_COLOR
+        "Kontrol ediliyor", 12, BLUE_COLOR
     )
+    status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     layout.add_child(status_label)
 
     var buttons := HBoxContainer.new()
-    buttons.add_theme_constant_override("separation", 10)
+    buttons.add_theme_constant_override(
+        "separation", 10
+    )
     layout.add_child(buttons)
 
     confirm_button = _make_button(
@@ -151,22 +176,23 @@ func _process(delta: float) -> void:
     _refresh_ui()
 
 
+func _is_pending() -> bool:
+    if not is_instance_valid(game):
+        return false
+
+    if not game.has_method("get_construction_pending"):
+        return false
+
+    return bool(
+        game.call("get_construction_pending")
+    )
+
+
 func _refresh_ui() -> void:
     if not is_instance_valid(panel):
         return
 
-    if not is_instance_valid(game):
-        panel.visible = false
-        return
-
-    if not game.has_method("get_construction_pending"):
-        panel.visible = false
-        return
-
-    var pending := bool(
-        game.call("get_construction_pending")
-    )
-
+    var pending := _is_pending()
     panel.visible = pending
 
     if not pending:
@@ -175,29 +201,50 @@ func _refresh_ui() -> void:
     var kind := str(game.get("selected_building"))
     building_label.text = "Bina: " + kind
 
+    var position := Vector3.ZERO
+
     if game.has_method("get_construction_position"):
-        var position: Vector3 = game.call(
+        position = game.call(
             "get_construction_position"
         )
 
-        position_label.text = (
-            "Konum: X %d  |  Z %d"
-            % [roundi(position.x), roundi(position.z)]
-        )
-    else:
-        position_label.text = "Konum secildi"
+    position_label.text = (
+        "Konum: X %d  |  Z %d"
+        % [roundi(position.x), roundi(position.z)]
+    )
 
-    status_label.text = "Insaat onayi bekleniyor"
+    var problem := ""
+
+    if game.has_method("construction_check"):
+        problem = str(
+            game.call(
+                "construction_check",
+                kind,
+                position
+            )
+        )
+
+    if problem.is_empty():
+        status_label.text = "Konum uygun - Insaat hazir"
+        status_label.add_theme_color_override(
+            "font_color", GREEN_COLOR
+        )
+        confirm_button.disabled = false
+    else:
+        status_label.text = "Uygun degil: " + problem
+        status_label.add_theme_color_override(
+            "font_color", RED_COLOR
+        )
+        confirm_button.disabled = true
 
 
 func _confirm() -> void:
-    if not is_instance_valid(game):
+    if not _is_pending():
         return
 
-    if not game.has_method("get_construction_pending"):
-        return
+    _refresh_ui()
 
-    if not bool(game.call("get_construction_pending")):
+    if confirm_button.disabled:
         return
 
     if game.has_method("confirm_construction"):
