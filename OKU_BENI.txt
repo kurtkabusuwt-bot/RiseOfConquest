@@ -1,0 +1,17 @@
+RISE OF CONQUEST - 50 MODUL PAKETI / BUILD 100
+
+Bu paket 03-50 arasindaki 48 YENI GDScript dosyasini ve 1 yukleyici dosyasini icerir.
+01 kingdom_core_100.gd ve 02 kingdom_map_100.gd zaten GitHub deponuzda bulunuyor.
+Böylece toplam 50 numarali modül vardır.
+
+UYARI: Bunlar ilk asama yerel prototip altyapilari, tamamlanmis online MMO sistemi degildir.
+03-50 modulleri CRUD, sinyal, disari/ice veri aktarimi ve alan bazli yardimci fonksiyonlar saglar.
+Gercek zamanli sunucu, ag senkronizasyonu, savas gorselleri, oyun ici entegrasyon ve APK testleri tamamlanmamistir.
+
+MANUEL YAPISTIRMA:
+1. ZIP icindeki 03-50 dosyalarini GitHub repo kokunde ayni adlarla olusturun.
+2. kingdom_modules_loader_100.gd dosyasini da ekleyin.
+3. Mevcut main.tscn dosyanizi BU PAKET ILE DEGISTIRMEYIN.
+4. Tum dosyalar kaydedilince haber verin. Sonraki asamada ana sahneye baglama ve derleme denetimi yapilacak.
+
+Kritik: 50 dosyayi yuklemek, otomatik olarak 50 oynanabilir ozellik saglamaz.
