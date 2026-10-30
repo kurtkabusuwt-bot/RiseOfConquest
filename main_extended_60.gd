@@ -1,8 +1,8 @@
 
 extends "res://main.gd"
 
-# RISE OF CONQUEST - BUILD 93.1
-# LIVE BUILDING POSITION VALIDATION
+# RISE OF CONQUEST - BUILD 93.3
+# PERSISTENT BUILDING ID FOUNDATION
 # Godot 4.4.1 / Android
 
 const BUILD_LIMIT_61 := 47.0
@@ -23,10 +23,13 @@ var construction_position := Vector3.ZERO
 var construction_screen_position := Vector2.ZERO
 var construction_kind := ""
 
+var building_id_counter := 0
+
 func zoom_camera(delta: float) -> void:
 	if world_mode:
 		camera_distance = clampf(
-			camera_distance + delta, 35.0, 155.0
+			camera_distance + delta,
+			35.0, 155.0
 		)
 	else:
 		camera_distance = clampf(
@@ -63,9 +66,7 @@ func construction_check(
 	if not interaction.has_method("get_buildings"):
 		return "Bina kontrol sistemi hazir degil."
 
-	var buildings: Array = interaction.get_buildings()
-
-	for building in buildings:
+	for building in interaction.get_buildings():
 		if not is_instance_valid(building):
 			continue
 
@@ -85,8 +86,6 @@ func construction_check(
 		if distance < spacing:
 			return "Bina cok yakin. Baska konum sec."
 
-	# Old occupied cells are intentionally not used here.
-	# Actual building positions are authoritative after moves.
 	return ""
 
 func choose_building(kind: String) -> void:
@@ -109,9 +108,7 @@ func get_construction_pending() -> bool:
 func get_construction_position() -> Vector3:
 	return construction_position
 
-func _screen_to_ground(
-	screen_pos: Vector2
-) -> Vector3:
+func _screen_to_ground(screen_pos: Vector2) -> Vector3:
 	if not is_instance_valid(camera):
 		return Vector3.INF
 
@@ -205,6 +202,87 @@ func _pay_construction_cost(kind: String) -> void:
 		"Kule":
 			coins -= 150
 
+func _next_building_id() -> String:
+	building_id_counter += 1
+
+	return "building_%s_%s" % [
+		str(Time.get_unix_time_from_system()),
+		str(building_id_counter)
+	]
+
+func _building_id_exists(id: String) -> bool:
+	var interaction := get_node_or_null("CityInteraction")
+
+	if interaction == null:
+		return false
+
+	if not interaction.has_method("get_buildings"):
+		return false
+
+	for building in interaction.get_buildings():
+		if is_instance_valid(building):
+			if str(building.get_meta("building_id", "")) == id:
+				return true
+
+	return false
+
+func ensure_building_id(building: Node3D) -> String:
+	if not is_instance_valid(building):
+		return ""
+
+	var existing := str(
+		building.get_meta("building_id", "")
+	)
+
+	if not existing.is_empty():
+		return existing
+
+	var new_id := _next_building_id()
+
+	while _building_id_exists(new_id):
+		new_id = _next_building_id()
+
+	building.set_meta("building_id", new_id)
+
+	return new_id
+
+func ensure_all_building_ids() -> void:
+	var interaction := get_node_or_null("CityInteraction")
+
+	if interaction == null:
+		return
+
+	if not interaction.has_method("get_buildings"):
+		return
+
+	for building in interaction.get_buildings():
+		if is_instance_valid(building):
+			ensure_building_id(building)
+
+func _find_building_at(
+	kind: String,
+	position: Vector3
+) -> Node3D:
+	var interaction := get_node_or_null("CityInteraction")
+
+	if interaction == null:
+		return null
+
+	if not interaction.has_method("get_buildings"):
+		return null
+
+	for building in interaction.get_buildings():
+		if not is_instance_valid(building):
+			continue
+
+		if str(interaction.building_kind(building)) != kind:
+			continue
+
+		if building.global_position.distance_to(position) < 0.1:
+			return building
+
+	return null
+
 func _sync_occupied_cells() -> void:
 	var interaction := get_node_or_null("CityInteraction")
 
@@ -266,12 +344,20 @@ func confirm_construction() -> void:
 	_pay_construction_cost(kind)
 	create_building(kind, position)
 
+	var building := _find_building_at(kind, position)
+	var new_id := ""
+
+	if is_instance_valid(building):
+		new_id = ensure_building_id(building)
+
 	buildings_saved.append({
+		"id": new_id,
 		"kind": kind,
 		"x": int(position.x),
 		"z": int(position.z)
 	})
 
+	ensure_all_building_ids()
 	_sync_occupied_cells()
 	clear_construction_pending()
 
