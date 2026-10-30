@@ -1,9 +1,12 @@
-name: Build 88.1 Godot 4.4.1 gameplay tests
+
+name: Rise of Conquest - Godot Gameplay Tests
 
 on:
   pull_request:
   push:
-    branches: [codex/build-88-hero-abilities]
+    branches:
+      - main
+      - build-89-1-ai
   workflow_dispatch:
 
 permissions:
@@ -12,16 +15,35 @@ permissions:
 jobs:
   gameplay:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Install Godot 4.4.1
         run: |
-          curl --fail --location --retry 3 -o /tmp/godot.zip https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64.zip
+          curl --fail --location --retry 3 \
+            -o /tmp/godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64.zip
           unzip -q /tmp/godot.zip -d /tmp/godot
-          sudo install -m 755 /tmp/godot/Godot_v4.4.1-stable_linux.x86_64 /usr/local/bin/godot
+          sudo install -m 755 \
+            /tmp/godot/Godot_v4.4.1-stable_linux.x86_64 \
+            /usr/local/bin/godot
+
       - name: Check battle scripts
-        run: godot --headless --path . --check-only --script war_build_88.gd
-      - name: Run battle integration tests
+        run: |
+          godot --headless --path . \
+            --check-only --script war_build_88.gd
+
+      - name: Run Build 88 integration tests
         run: |
           export XDG_DATA_HOME="$RUNNER_TEMP/roc-test-data"
-          timeout 90s godot --headless --path . --script tests/test_build_88.gd
+          timeout 90s godot --headless --path . \
+            --script tests/test_build_88.gd
+
+      - name: Run Build 89 tactical AI tests
+        run: |
+          export XDG_DATA_HOME="$RUNNER_TEMP/roc-test-data"
+          timeout 90s godot --headless --path . \
+            --script tests/test_build_89.gd
+            

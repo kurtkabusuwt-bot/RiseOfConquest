@@ -1,4 +1,3 @@
-Üçüncü dosya: war_conquest_31.gd — güncellenecek mevcut dosya.
 
 extends Node3D
 
