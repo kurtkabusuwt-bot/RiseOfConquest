@@ -1,30 +1,33 @@
 
 extends CanvasLayer
 
-# RISE OF CONQUEST - BUILD 90.2
-# CLEAN MOBILE MAIN MENU
+# RISE OF CONQUEST - BUILD 90.5
+# CLEAN MOBILE NAVIGATION
 # Godot 4.4.1 / Android
 
-var game: Node3D
+const GOLD := Color(0.91, 0.72, 0.39)
+const DARK := Color(0.035, 0.065, 0.105, 0.96)
+const BUTTON_BG := Color(0.12, 0.19, 0.27, 0.97)
+
+var game: Node
+var manager: Node
 var root: Control
 var bottom_bar: PanelContainer
 var action_panel: PanelContainer
 var action_title: Label
 var action_list: VBoxContainer
-var current_tab: String = ""
-
-const GOLD := Color(0.91, 0.72, 0.39)
-const DARK := Color(0.035, 0.065, 0.105, 0.95)
-const BUTTON_BG := Color(0.12, 0.19, 0.27, 0.97)
+var current_tab := ""
 
 func _ready() -> void:
-	layer = 80
+	layer = 95
 	call_deferred("_initialize")
 
 func _initialize() -> void:
-	game = get_tree().current_scene as Node3D
+	game = get_tree().current_scene
 	if game == null:
 		return
+
+	manager = game.get_node_or_null("MobileUIManager90")
 	_build_interface()
 
 func _make_style(bg: Color) -> StyleBoxFlat:
@@ -39,10 +42,10 @@ func _make_style(bg: Color) -> StyleBoxFlat:
 	style.content_margin_bottom = 8
 	return style
 
-func _make_button(text_value: String, action: Callable) -> Button:
+func _make_button(caption: String, action: Callable) -> Button:
 	var button := Button.new()
-	button.text = text_value
-	button.custom_minimum_size = Vector2(110, 52)
+	button.text = caption
+	button.custom_minimum_size = Vector2(115, 52)
 	button.add_theme_stylebox_override(
 		"normal", _make_style(BUTTON_BG)
 	)
@@ -118,9 +121,7 @@ func _build_action_panel() -> void:
 	action_title.add_theme_color_override("font_color", GOLD)
 	header.add_child(action_title)
 
-	header.add_child(
-		_make_button("KAPAT", _close_panel)
-	)
+	header.add_child(_make_button("KAPAT", _close_panel))
 
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -139,15 +140,31 @@ func _clear_actions() -> void:
 		action_list.remove_child(child)
 		child.queue_free()
 
-func _add_action(title: String, method: String, args: Array = []) -> void:
+func _add_action(caption: String, method: String, args: Array = []) -> void:
 	var action := func() -> void:
 		if game != null and game.has_method(method):
 			game.callv(method, args)
-			_close_panel()
 		else:
 			push_warning("Eksik oyun fonksiyonu: " + method)
+		_close_panel()
 
-	action_list.add_child(_make_button(title, action))
+	action_list.add_child(_make_button(caption, action))
+
+func _add_manager_action(caption: String, method: String) -> void:
+	var action := func() -> void:
+		if is_instance_valid(manager) and manager.has_method(method):
+			manager.call(method)
+		else:
+			push_warning("Eksik arayuz fonksiyonu: " + method)
+		_close_panel()
+
+	action_list.add_child(_make_button(caption, action))
+
+func _open_commanders() -> void:
+	var war := game.get_node_or_null("WarConquest31")
+	if war != null and war.has_method("toggle_commander_panel"):
+		war.toggle_commander_panel()
+	_close_panel()
 
 func _open_tab(tab: String) -> void:
 	if current_tab == tab and action_panel.visible:
@@ -176,11 +193,12 @@ func _open_tab(tab: String) -> void:
 			_add_action("YERLESTIRME IPTAL", "cancel_placement")
 
 		"ORDU":
+			_add_manager_action("ORDU YONETIMI", "open_army")
 			_add_action("ORDU GONDER", "send_world_army")
+			action_list.add_child(
+				_make_button("KOMUTANLAR", _open_commanders)
+			)
 			_add_action("HEDEF DEGISTIR", "select_next_unit")
-			_add_action("SALDIR", "order_attack")
-			_add_action("SAVUN", "toggle_hold")
-			_add_action("GERI CEKIL", "retreat_battle")
 
 		"SAVAS":
 			_add_action("SAVAS BASLAT", "start_battle")
@@ -189,8 +207,12 @@ func _open_tab(tab: String) -> void:
 			_add_action("GERI CEKIL", "retreat_battle")
 
 		"MENU":
+			_add_manager_action("KAHRAMANLAR", "open_heroes")
+			_add_manager_action("KRALLIK YONETIMI", "open_kingdom")
+			action_list.add_child(
+				_make_button("KOMUTANLAR", _open_commanders)
+			)
 			_add_action("OYUNU KAYDET", "save_game", [true])
-			_add_action("DUNYA HARITASI", "toggle_world_map")
 			_add_action("GUN / GECE", "toggle_day_night")
 
 	action_panel.visible = true
