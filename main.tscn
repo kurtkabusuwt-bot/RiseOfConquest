@@ -1,5 +1,5 @@
 
-[gd_scene load_steps=22 format=3]
+[gd_scene load_steps=23 format=3]
 
 [ext_resource type="Script" path="res://main_extended_60.gd" id="1"]
 [ext_resource type="Script" path="res://conquest_14.gd" id="2"]
@@ -22,6 +22,7 @@
 [ext_resource type="Script" path="res://mobile_ui_manager_90.gd" id="19"]
 [ext_resource type="Script" path="res://battle_hud_layout_91.gd" id="20"]
 [ext_resource type="Script" path="res://construction_preview_92.gd" id="21"]
+[ext_resource type="Script" path="res://mobile_construction_controls_95.gd" id="22"]
 
 [node name="RiseOfConquest" type="Node3D"]
 script = ExtResource("1")
@@ -85,3 +86,6 @@ script = ExtResource("20")
 
 [node name="ConstructionPreview92" type="Node3D" parent="."]
 script = ExtResource("21")
+
+[node name="MobileConstructionControls95" type="CanvasLayer" parent="."]
+script = ExtResource("22")
