@@ -1,5 +1,5 @@
 
-[gd_scene load_steps=19 format=3]
+[gd_scene load_steps=20 format=3]
 
 [ext_resource type="Script" path="res://main_extended_60.gd" id="1"]
 [ext_resource type="Script" path="res://conquest_14.gd" id="2"]
@@ -19,6 +19,7 @@
 [ext_resource type="Script" path="res://mobile_resources_90.gd" id="16"]
 [ext_resource type="Script" path="res://mobile_menu_90.gd" id="17"]
 [ext_resource type="Script" path="res://mobile_cleanup_90.gd" id="18"]
+[ext_resource type="Script" path="res://mobile_ui_manager_90.gd" id="19"]
 
 [node name="RiseOfConquest" type="Node3D"]
 script = ExtResource("1")
@@ -73,3 +74,6 @@ script = ExtResource("17")
 
 [node name="MobileCleanup90" type="Node" parent="."]
 script = ExtResource("18")
+
+[node name="MobileUIManager90" type="Node" parent="."]
+script = ExtResource("19")
