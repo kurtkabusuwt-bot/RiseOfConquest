@@ -1,6 +1,9 @@
+
 extends RefCounted
 
-# RISE OF CONQUEST - WAR UI 4.0
+# RISE OF CONQUEST - BUILD 91.3
+# CLEAN WAR INTERFACE
+# Godot 4.4.1 / Android
 
 var layer: CanvasLayer
 var panel: PanelContainer
@@ -9,6 +12,15 @@ var stats: Label
 var report: Label
 var hud_text: Label
 
+func make_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.035, 0.06, 0.1, 0.96)
+	style.border_color = Color(0.85, 0.67, 0.35)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(12)
+	style.set_content_margin_all(12)
+	return style
+
 func button(
 	parent: VBoxContainer,
 	title: String,
@@ -16,7 +28,12 @@ func button(
 ) -> Button:
 	var result := Button.new()
 	result.text = title
-	result.custom_minimum_size = Vector2(0, 43)
+	result.custom_minimum_size = Vector2(0, 48)
+	result.add_theme_font_size_override("font_size", 16)
+	result.add_theme_color_override(
+		"font_color",
+		Color(0.95, 0.81, 0.54)
+	)
 	parent.add_child(result)
 	result.pressed.connect(action)
 	return result
@@ -26,74 +43,94 @@ func build(war: Node) -> void:
 	layer.layer = 40
 	war.add_child(layer)
 
+	# Legacy launcher is retained for compatibility,
+	# but hidden in the new mobile interface.
 	var open := Button.new()
 	open.text = "SAVAS 4.0"
-	open.position = Vector2(12, 45)
-	open.custom_minimum_size = Vector2(150, 46)
+	open.visible = false
 	layer.add_child(open)
 	open.pressed.connect(war.toggle_panel)
 
 	panel = PanelContainer.new()
-	panel.position = Vector2(165, 50)
-	panel.custom_minimum_size = Vector2(335, 0)
+	panel.name = "WarManagementPanel"
+	panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	panel.offset_left = 14
+	panel.offset_top = 100
+	panel.offset_right = -14
+	panel.offset_bottom = -100
+	panel.add_theme_stylebox_override("panel", make_style())
 	layer.add_child(panel)
 
 	var content := VBoxContainer.new()
-	content.add_theme_constant_override("separation", 5)
+	content.add_theme_constant_override("separation", 8)
 	panel.add_child(content)
 
-	var title := Label.new()
-	title.text = "SAVAS VE FETIH KOMUTANLIGI"
-	content.add_child(title)
+	var heading := Label.new()
+	heading.text = "SAVAS VE FETIH KOMUTANLIGI"
+	heading.add_theme_font_size_override("font_size", 20)
+	heading.add_theme_color_override(
+		"font_color",
+		Color(0.95, 0.81, 0.54)
+	)
+	content.add_child(heading)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content.add_child(scroll)
+
+	var actions := VBoxContainer.new()
+	actions.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	actions.add_theme_constant_override("separation", 8)
+	scroll.add_child(actions)
 
 	stats = Label.new()
-	content.add_child(stats)
+	stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	actions.add_child(stats)
+
+	button(actions, "FORMASYON DEGISTIR", war.next_formation)
+	button(actions, "SAVAS EMRI DEGISTIR", war.next_order)
 
 	button(
-		content, "FORMASYON DEGISTIR",
-		war.next_formation
-	)
-	button(
-		content, "SAVAS EMRI DEGISTIR",
-		war.next_order
-	)
-	button(
-		content, "2 SUIKASTCI EGIT",
+		actions,
+		"2 SUIKASTCI EGIT",
 		func(): war.train_special("assassin")
 	)
+
 	button(
-		content, "2 KUSATMA BIRLIGI EGIT",
+		actions,
+		"2 KUSATMA BIRLIGI EGIT",
 		func(): war.train_special("siege")
 	)
-	button(
-		content, "FETIH SAVASI BASLAT",
-		war.begin_battle
-	)
+
+	button(actions, "FETIH SAVASI BASLAT", war.begin_battle)
 
 	report = Label.new()
 	report.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	report.custom_minimum_size = Vector2(325, 0)
-	content.add_child(report)
+	actions.add_child(report)
 
 	button(content, "KAPAT", war.toggle_panel)
 	panel.visible = false
 
+	# Compact battle information at the top.
 	hud = PanelContainer.new()
-	hud.position = Vector2(180, 12)
-	hud.custom_minimum_size = Vector2(300, 0)
+	hud.name = "BattleStatusHUD"
+	hud.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	hud.offset_left = 14
+	hud.offset_top = 110
+	hud.offset_right = -14
+	hud.offset_bottom = 225
+	hud.add_theme_stylebox_override("panel", make_style())
 	layer.add_child(hud)
 
 	var hud_content := VBoxContainer.new()
 	hud.add_child(hud_content)
 
 	hud_text = Label.new()
+	hud_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hud_text.add_theme_font_size_override("font_size", 15)
 	hud_content.add_child(hud_text)
 
-	button(
-		hud_content,
-		"EMIR DEGISTIR",
-		war.next_order
-	)
+	button(hud_content, "EMIR DEGISTIR", war.next_order)
 
 	hud.visible = false
 
@@ -156,7 +193,7 @@ func battle_status(
 		return
 
 	hud_text.text = (
-		"SAVAS 4.0 | " + enemy +
+		"SAVAS | " + enemy +
 		"\nMAVI: %d | KIRMIZI: %d\n" % [blue, red] +
 		wall +
 		"\nEMIR: " + order +
