@@ -1,8 +1,8 @@
 
 extends CanvasLayer
 
-# RISE OF CONQUEST - BUILD 91.4
-# UNIFIED MOBILE NAVIGATION
+# RISE OF CONQUEST - BUILD 91.9
+# CITY AND CONSTRUCTION NAVIGATION
 # Godot 4.4.1 / Android
 
 const GOLD := Color(0.91, 0.72, 0.39)
@@ -24,6 +24,7 @@ func _ready() -> void:
 
 func _initialize() -> void:
 	game = get_tree().current_scene
+
 	if game == null:
 		return
 
@@ -133,6 +134,13 @@ func _clear_actions() -> void:
 		action_list.remove_child(child)
 		child.queue_free()
 
+func _add_section(title_text: String) -> void:
+	var label := Label.new()
+	label.text = title_text
+	label.add_theme_color_override("font_color", GOLD)
+	label.add_theme_font_size_override("font_size", 17)
+	action_list.add_child(label)
+
 func _add_action(
 	caption: String,
 	method: String,
@@ -140,6 +148,7 @@ func _add_action(
 ) -> void:
 	var action := func() -> void:
 		_close_panel()
+
 		if game != null and game.has_method(method):
 			game.callv(method, args)
 		else:
@@ -153,6 +162,7 @@ func _add_manager_action(
 ) -> void:
 	var action := func() -> void:
 		_close_panel()
+
 		if is_instance_valid(manager) and manager.has_method(method):
 			manager.call(method)
 		else:
@@ -160,8 +170,28 @@ func _add_manager_action(
 
 	action_list.add_child(_make_button(caption, action))
 
+func _toggle_building_names() -> void:
+	_close_panel()
+
+	var interaction := game.get_node_or_null("CityInteraction")
+
+	if interaction == null:
+		return
+
+	var enabled := not bool(interaction.get("names_enabled"))
+	interaction.set("names_enabled", enabled)
+
+	var old_button: Variant = interaction.get("names_button")
+
+	if old_button is Button:
+		old_button.set_pressed_no_signal(enabled)
+
+	if interaction.has_method("update_labels"):
+		interaction.update_labels()
+
 func _open_commanders() -> void:
 	_close_panel()
+
 	var war := game.get_node_or_null("WarConquest31")
 
 	if war != null and war.has_method("toggle_commander_panel"):
@@ -169,12 +199,10 @@ func _open_commanders() -> void:
 
 func _open_war_management() -> void:
 	_close_panel()
+
 	var war := game.get_node_or_null("WarConquest31")
 
-	if war == null:
-		return
-
-	if war.has_method("toggle_panel"):
+	if war != null and war.has_method("toggle_panel"):
 		war.toggle_panel()
 
 func _open_tab(tab: String) -> void:
@@ -188,22 +216,48 @@ func _open_tab(tab: String) -> void:
 
 	match tab:
 		"SEHIR":
+			_add_section("SEHIR KONTROLLERI")
 			_add_action("DUNYA / SEHIR", "toggle_world_map")
-			_add_action("HUKUMDAR", "toggle_ruler")
+			_add_action("HUKUMDAR MODU", "toggle_ruler")
 			_add_action("GUN / GECE", "toggle_day_night")
-			_add_action("KAMERA YAKIN", "zoom_camera", [-3.0])
-			_add_action("KAMERA UZAK", "zoom_camera", [3.0])
+
+			_add_section("GORUNUM")
+			action_list.add_child(
+				_make_button(
+					"BINA ISIMLERINI AC / KAPAT",
+					_toggle_building_names
+				)
+			)
+			_add_action("KAMERA YAKINLASTIR", "zoom_camera", [-3.0])
+			_add_action("KAMERA UZAKLASTIR", "zoom_camera", [3.0])
 
 		"INSAAT":
+			_add_section("YASAM VE ASKERI BINALAR")
 			_add_action("EV", "choose_building", ["Ev"])
 			_add_action("KISLA", "choose_building", ["Kışla"])
+			_add_action("GOZETLEME KULESI", "choose_building", ["Kule"])
+
+			_add_section("URETIM BINALARI")
 			_add_action("CIFTLIK", "choose_building", ["Çiftlik"])
-			_add_action("KERESTE", "choose_building", ["Kereste"])
-			_add_action("TASOCAGI", "choose_building", ["Taşocağı"])
-			_add_action("KULE", "choose_building", ["Kule"])
-			_add_action("YERLESTIRME IPTAL", "cancel_placement")
+			_add_action("KERESTE ATOLYESI", "choose_building", ["Kereste"])
+			_add_action("TAS OCAGI", "choose_building", ["Taşocağı"])
+
+			_add_section("YERLESTIRME")
+			var hint := Label.new()
+			hint.text = (
+				"Mevcut binayi tasimak icin "
+				"uzerine basili tutup surukleyin."
+			)
+			hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			action_list.add_child(hint)
+
+			_add_action(
+				"YERLESTIRMEYI IPTAL ET",
+				"cancel_placement"
+			)
 
 		"ORDU":
+			_add_section("ORDU YONETIMI")
 			_add_manager_action("ORDU YONETIMI", "open_army")
 			_add_action("ORDU GONDER", "send_world_army")
 			action_list.add_child(
@@ -212,6 +266,7 @@ func _open_tab(tab: String) -> void:
 			_add_action("HEDEF DEGISTIR", "select_next_unit")
 
 		"SAVAS":
+			_add_section("SAVAS VE FETIH")
 			action_list.add_child(
 				_make_button(
 					"FETIH YONETIMI",
@@ -224,6 +279,7 @@ func _open_tab(tab: String) -> void:
 			_add_action("GERI CEKIL", "retreat_battle")
 
 		"MENU":
+			_add_section("KRALLIK")
 			_add_manager_action("KAHRAMANLAR", "open_heroes")
 			_add_manager_action(
 				"KRALLIK YONETIMI", "open_kingdom"
@@ -231,11 +287,15 @@ func _open_tab(tab: String) -> void:
 			action_list.add_child(
 				_make_button("KOMUTANLAR", _open_commanders)
 			)
+
+			_add_section("OYUN")
 			_add_action("OYUNU KAYDET", "save_game", [true])
 			_add_action("GUN / GECE", "toggle_day_night")
 
 	action_panel.visible = true
 
 func _close_panel() -> void:
-	action_panel.visible = false
+	if action_panel != null:
+		action_panel.visible = false
+
 	current_tab = ""
