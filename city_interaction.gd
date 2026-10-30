@@ -1,715 +1,11 @@
 
-extends Node
-
-# RISE OF CONQUEST - BUILD 93.7
-# CITY SAVE + BUILDING ID REPAIR
-# Godot 4.4.1 / Android
-
-const HOLD_TIME := 0.55
-const MOVE_LIMIT := 47.0
-const MIN_SPACING := 4.5
-const SAVE_PATH := "user://city_layout_v3.json"
-
-const TYPES := [
-	"Merkez", "Ev", "Kule", "Kışla",
-	"Çiftlik", "Kereste", "Taşocağı"
-]
-
-var game: Node3D
-var camera: Camera3D
-var overlay: Control
-var fps_label: Label
-var names_button: Button
-var labels: Dictionary = {}
-
-var finger := -1
-var pressing := false
-var holding := false
-var names_enabled := false
-var hold_timer := 0.0
-var press_point := Vector2.ZERO
-var selected: Node3D
-var moved := false
-var fps_timer := 0.0
-var refresh_timer := 0.0
-var local_id_counter := 0
-
-func _ready() -> void:
-	call_deferred("initialize")
-
-func initialize() -> void:
-	game = get_parent() as Node3D
-	if not is_instance_valid(game):
-		return
-
-	camera = game.get("camera") as Camera3D
-	create_interface()
-
-	await get_tree().process_frame
-	await get_tree().process_frame
-
-	if not is_instance_valid(game):
-		return
-
-	restore_building_ids()
-	ensure_all_ids()
-	sync_occupied()
-	refresh_labels()
-
-func create_interface() -> void:
-	var layer := CanvasLayer.new()
-	layer.layer = 100
-	add_child(layer)
-
-	overlay = Control.new()
-	layer.add_child(overlay)
-	overlay.set_anchors_and_offsets_preset(
-		Control.PRESET_FULL_RECT
-	)
-	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-	fps_label = Label.new()
-	overlay.add_child(fps_label)
-	fps_label.set_anchors_preset(
-		Control.PRESET_TOP_RIGHT
-	)
-	fps_label.offset_left = -150
-	fps_label.offset_right = -12
-	fps_label.offset_top = 58
-	fps_label.offset_bottom = 92
-	fps_label.horizontal_alignment = (
-		HORIZONTAL_ALIGNMENT_RIGHT
-	)
-	fps_label.mouse_filter = (
-		Control.MOUSE_FILTER_IGNORE
-	)
-	fps_label.add_theme_font_size_override(
-		"font_size", 18
-	)
-
-	names_button = Button.new()
-	names_button.text = "BINA ISIMLERI"
-	names_button.position = Vector2(15, 70)
-	names_button.custom_minimum_size = (
-		Vector2(170, 48)
-	)
-	names_button.toggle_mode = true
-	names_button.visible = false
-	overlay.add_child(names_button)
-
-	names_button.toggled.connect(
-		func(enabled: bool) -> void:
-			names_enabled = enabled
-			update_labels()
-	)
-
-func _process(delta: float) -> void:
-	if not is_instance_valid(game):
-		return
-
-	if not is_instance_valid(camera):
-		camera = game.get("camera") as Camera3D
-		if not is_instance_valid(camera):
-			return
-
-	fps_timer += delta
-	refresh_timer += delta
-
-	if fps_timer >= 0.5:
-		fps_timer = 0.0
-		fps_label.text = "FPS: %d" % (
-			Engine.get_frames_per_second()
-		)
-
-	if refresh_timer >= 0.5:
-		refresh_timer = 0.0
-		refresh_labels()
-
-	if pressing and not holding:
-		if not interaction_allowed():
-			cancel_press()
-		else:
-			hold_timer += delta
-			if hold_timer >= HOLD_TIME:
-				begin_hold()
-
-	if names_enabled or holding:
-		update_labels()
-
-func building_kind(node: Node3D) -> String:
-	var name_text := String(node.name)
-
-	for kind in TYPES:
-		if name_text == kind:
-			return kind
-
-		if name_text.begins_with(kind):
-			var suffix := name_text.substr(
-				kind.length()
-			)
-			if suffix.is_valid_int():
-				return kind
-
-		if name_text.begins_with(
-			"@" + kind + "@"
-		):
-			return kind
-
-	return ""
-
-func get_buildings() -> Array[Node3D]:
-	var result: Array[Node3D] = []
-
-	if not is_instance_valid(game):
-		return result
-
-	for child in game.get_children():
-		if child is Node3D:
-			var building := child as Node3D
-			if building_kind(building) != "":
-				result.append(building)
-
-	return result
-
-func building_title(node: Node3D) -> String:
-	match building_kind(node):
-		"Merkez":
-			return "Osmanlı Belediye Binası"
-		"Kule":
-			return "Gözetleme Kulesi"
-		"Kereste":
-			return "Kereste Atölyesi"
-		"Taşocağı":
-			return "Taş Ocağı"
-
-	return building_kind(node)
-
-func refresh_labels() -> void:
-	if not is_instance_valid(overlay):
-		return
-
-	for building in get_buildings():
-		var id := building.get_instance_id()
-		if labels.has(id):
-			continue
-
-		var label := Label.new()
-		label.text = building_title(building)
-		label.add_theme_font_size_override(
-			"font_size", 18
-		)
-		label.add_theme_color_override(
-			"font_color", Color.WHITE
-		)
-		label.add_theme_color_override(
-			"font_shadow_color", Color.BLACK
-		)
-		label.mouse_filter = (
-			Control.MOUSE_FILTER_IGNORE
-		)
-		label.visible = false
-		overlay.add_child(label)
-
-		labels[id] = {
-			"building": building,
-			"label": label
-		}
-
-	update_labels()
-
-func update_labels() -> void:
-	if not is_instance_valid(camera):
-		return
-
-	for id in labels.keys():
-		var entry: Dictionary = labels[id]
-		var building: Node3D = entry["building"]
-		var label: Label = entry["label"]
-
-		if not is_instance_valid(building):
-			if is_instance_valid(label):
-				label.queue_free()
-			labels.erase(id)
-			continue
-
-		var height := 3.5
-
-		if building_kind(building) == "Merkez":
-			height = 7.0
-		elif building_kind(building) == "Kule":
-			height = 5.0
-
-		var world_pos := building.global_position
-		world_pos.y += height
-
-		var visible_now := (
-			names_enabled or holding
-		)
-
-		if camera.is_position_behind(world_pos):
-			visible_now = false
-
-		label.visible = visible_now
-
-		if visible_now:
-			var screen_pos := (
-				camera.unproject_position(
-					world_pos
-				)
-			)
-			label.position = (
-				screen_pos -
-				Vector2(label.size.x * 0.5, 0)
-			)
-
-func interaction_allowed() -> bool:
-	if not is_instance_valid(game):
-		return false
-
-	if not is_instance_valid(camera):
-		return false
-
-	for property_name in [
-		"world_mode", "placing",
-		"battle_active", "ruler_mode"
-	]:
-		if bool(game.get(property_name)):
-			return false
-
-	var mobile := game.get_node_or_null(
-		"MobileMenu90"
-	)
-
-	if mobile != null:
-		var panel: Variant = mobile.get(
-			"action_panel"
-		)
-		if panel is Control and panel.visible:
-			return false
-
-	return true
-
-func screen_to_ground(
-	pos: Vector2
-) -> Vector3:
-	var origin := camera.project_ray_origin(pos)
-	var direction := camera.project_ray_normal(pos)
-
-	if absf(direction.y) < 0.0001:
-		return Vector3.INF
-
-	var distance := -origin.y / direction.y
-
-	if distance <= 0.0:
-		return Vector3.INF
-
-	return origin + direction * distance
-
-func find_building(
-	pos: Vector2
-) -> Node3D:
-	var best: Node3D = null
-	var best_distance := INF
-
-	for building in get_buildings():
-		var height := 2.0
-		var radius := 85.0
-
-		if building_kind(building) == "Merkez":
-			height = 4.0
-			radius = 140.0
-
-		var center := building.global_position
-		center.y += height
-
-		if camera.is_position_behind(center):
-			continue
-
-		var screen_center := (
-			camera.unproject_position(center)
-		)
-		var distance := pos.distance_to(
-			screen_center
-		)
-
-		if distance < radius:
-			if distance < best_distance:
-				best_distance = distance
-				best = building
-
-	return best
-
-func _input(event: InputEvent) -> void:
-	if not interaction_allowed():
-		if finger != -1:
-			cancel_press()
-		return
-
-	if event is InputEventScreenTouch:
-		if event.pressed:
-			if finger != -1:
-				cancel_press()
-				return
-
-			start_press(
-				event.position,
-				event.index
-			)
-		elif event.index == finger:
-			var was_holding := holding
-			finish_press()
-
-			if was_holding:
-				get_viewport().set_input_as_handled()
-
-	elif event is InputEventScreenDrag:
-		if event.index != finger:
-			return
-
-		if holding:
-			move_building(event.position)
-			get_viewport().set_input_as_handled()
-		elif event.position.distance_to(
-			press_point
-		) > 22.0:
-			pressing = false
-
-	elif event is InputEventMouseButton:
-		if event.button_index != (
-			MOUSE_BUTTON_LEFT
-		):
-			return
-
-		if event.pressed:
-			start_press(event.position, -2)
-		elif finger == -2:
-			var was_holding := holding
-			finish_press()
-
-			if was_holding:
-				get_viewport().set_input_as_handled()
-
-	elif event is InputEventMouseMotion:
-		if finger != -2:
-			return
-
-		if holding:
-			move_building(event.position)
-			get_viewport().set_input_as_handled()
-		elif event.position.distance_to(
-			press_point
-		) > 22.0:
-			pressing = false
-
-func start_press(
-	pos: Vector2,
-	index: int
-) -> void:
-	if finger != -1:
-		return
-
-	var screen := (
-		get_viewport().get_visible_rect().size
-	)
-
-	if pos.y < 145.0:
-		return
-
-	if pos.y > screen.y - 100.0:
-		return
-
-	var building := find_building(pos)
-
-	if building == null:
-		return
-
-	finger = index
-	pressing = true
-	holding = false
-	moved = false
-	hold_timer = 0.0
-	press_point = pos
-	selected = building
-
-func begin_hold() -> void:
-	if not pressing:
-		return
-
-	if not is_instance_valid(selected):
-		return
-
-	holding = true
-	pressing = false
-	game.set("dragging", true)
-	update_labels()
-
-func required_spacing(
-	a: Node3D,
-	b: Node3D
-) -> float:
-	var a_kind := building_kind(a)
-	var b_kind := building_kind(b)
-
-	if a_kind == "Merkez":
-		return 8.0
-
-	if b_kind == "Merkez":
-		return 8.0
-
-	if a_kind == "Kule":
-		return 5.5
-
-	if b_kind == "Kule":
-		return 5.5
-
-	return MIN_SPACING
-
-func valid_position(
-	target: Vector3
-) -> bool:
-	if absf(target.x) > MOVE_LIMIT:
-		return false
-
-	if absf(target.z) > MOVE_LIMIT:
-		return false
-
-	for other in get_buildings():
-		if other == selected:
-			continue
-
-		var distance := Vector2(
-			target.x - other.global_position.x,
-			target.z - other.global_position.z
-		).length()
-
-		if distance < required_spacing(
-			selected, other
-		):
-			return false
-
-	return true
-
-func move_building(pos: Vector2) -> void:
-	if not holding:
-		return
-
-	if not is_instance_valid(selected):
-		return
-
-	var ground := screen_to_ground(pos)
-
-	if not ground.is_finite():
-		return
-
-	var target := Vector3(
-		roundf(ground.x),
-		selected.position.y,
-		roundf(ground.z)
-	)
-
-	if not valid_position(target):
-		return
-
-	var offset := (
-		target - selected.position
-	)
-
-	if offset.length_squared() < 0.001:
-		return
-
-	selected.position = target
-	moved = true
-
-	if building_kind(selected) == "Merkez":
-		var preview := game.get_node_or_null(
-			"OttomanCityHallPreview"
-		) as Node3D
-
-		if preview != null:
-			preview.position += offset
-
-	update_labels()
-
-func finish_press() -> void:
-	if holding:
-		if is_instance_valid(selected):
-			if moved:
-				ensure_all_ids()
-				sync_occupied()
-				sync_saved_buildings()
-				save_positions()
-
-	reset_press()
-	update_labels()
-
-func cancel_press() -> void:
-	reset_press()
-	update_labels()
-
-func reset_press() -> void:
-	finger = -1
-	pressing = false
-	holding = false
-	moved = false
-	hold_timer = 0.0
-	selected = null
-
-	if is_instance_valid(game):
-		game.set("dragging", false)
-
-func _generate_id() -> String:
-	local_id_counter += 1
-
-	return "building_%s_%s" % [
-		str(Time.get_unix_time_from_system()),
-		str(local_id_counter)
-	]
-
-func _id_in_use(
-	id: String,
-	excluded: Node3D = null
-) -> bool:
-	for building in get_buildings():
-		if building == excluded:
-			continue
-
-		if str(building.get_meta(
-			"building_id", ""
-		)) == id:
-			return true
-
-	return false
-
-func ensure_id(building: Node3D) -> String:
-	if not is_instance_valid(building):
-		return ""
-
-	var existing := str(
-		building.get_meta(
-			"building_id", ""
-		)
-	)
-
-	if not existing.is_empty():
-		if not _id_in_use(
-			existing, building
-		):
-			return existing
-
-	var new_id := _generate_id()
-
-	while _id_in_use(new_id, building):
-		new_id = _generate_id()
-
-	building.set_meta(
-		"building_id", new_id
-	)
-
-	return new_id
-
-func ensure_all_ids() -> void:
-	for building in get_buildings():
-		ensure_id(building)
-
-func sync_occupied() -> void:
-	if not is_instance_valid(game):
-		return
-
-	var cells: Array[Vector2i] = []
-
-	for building in get_buildings():
-		cells.append(
-			Vector2i(
-				roundi(
-					building.global_position.x
-				),
-				roundi(
-					building.global_position.z
-				)
-			)
-		)
-
-	game.set("occupied", cells)
-
-func sync_saved_buildings() -> void:
-	if not is_instance_valid(game):
-		return
-
-	ensure_all_ids()
-
-	var entries: Array[Dictionary] = []
-
-	for building in get_buildings():
-		var kind := building_kind(building)
-
-		# City hall is created by the game,
-		# not by the construction save loader.
-		if kind == "Merkez":
-			continue
-
-		entries.append({
-			"id": ensure_id(building),
-			"kind": kind,
-			"x": roundi(
-				building.position.x
-			),
-			"z": roundi(
-				building.position.z
-			)
-		})
-
-	game.set("buildings_saved", entries)
-
-	if game.has_method("save_game"):
-		game.call("save_game", false)
-
-func save_positions() -> void:
-	ensure_all_ids()
-
-	var entries: Array[Dictionary] = []
-	var kind_counts: Dictionary = {}
-
-	for building in get_buildings():
-		var kind := building_kind(building)
-
-		var ordinal := int(
-			kind_counts.get(kind, 0)
-		)
-		kind_counts[kind] = ordinal + 1
-
-		entries.append({
-			"id": ensure_id(building),
-			"kind": kind,
-			"ordinal": ordinal,
-			"x": building.position.x,
-			"z": building.position.z
-		})
-
-	var file := FileAccess.open(
-		SAVE_PATH,
-		FileAccess.WRITE
-	)
-
-	if file != null:
-		file.store_string(
-			JSON.stringify(entries)
-		)
-		file.close()
-
 func restore_building_ids() -> void:
-	# The main save already restored building
-	# positions. This file restores identities
-	# and handles older layout saves.
-	if not FileAccess.file_exists(
-		SAVE_PATH
-	):
+	if not FileAccess.file_exists(SAVE_PATH):
 		return
 
 	var file := FileAccess.open(
-		SAVE_PATH,
-		FileAccess.READ
+		SAVE_PATH, FileAccess.READ
 	)
-
 	if file == null:
 		return
 
@@ -727,61 +23,44 @@ func restore_building_ids() -> void:
 
 	for building in buildings:
 		var kind := building_kind(building)
-
 		if not grouped.has(kind):
 			grouped[kind] = []
-
 		grouped[kind].append(building)
 
 	for entry in data:
 		if not (entry is Dictionary):
 			continue
 
-		var kind := str(
-			entry.get("kind", "")
-		)
-
+		var kind := str(entry.get("kind", ""))
 		if not grouped.has(kind):
 			continue
 
-		var saved_id := str(
-			entry.get("id", "")
-		)
+		var saved_id := str(entry.get("id", ""))
+		var x := float(entry.get("x", 0.0))
+		var z := float(entry.get("z", 0.0))
 
-		if saved_id.is_empty():
+		if absf(x) > MOVE_LIMIT:
+			continue
+		if absf(z) > MOVE_LIMIT:
 			continue
 
 		var target: Node3D = null
 		var candidates: Array = grouped[kind]
 
-		# Prefer matching an identity already
-		# restored from the main game save.
 		for candidate in candidates:
-			if used.has(
-				candidate.get_instance_id()
-			):
+			if used.has(candidate.get_instance_id()):
 				continue
 
-			if str(candidate.get_meta(
-				"building_id", ""
-			)) == saved_id:
-				target = candidate
-				break
+			if not saved_id.is_empty():
+				if str(candidate.get_meta(
+					"building_id", ""
+				)) == saved_id:
+					target = candidate
+					break
 
-		# For old saves, match the exact
-		# building kind and position.
 		if target == null:
-			var x := float(
-				entry.get("x", 0.0)
-			)
-			var z := float(
-				entry.get("z", 0.0)
-			)
-
 			for candidate in candidates:
-				if used.has(
-					candidate.get_instance_id()
-				):
+				if used.has(candidate.get_instance_id()):
 					continue
 
 				var current_id := str(
@@ -792,6 +71,10 @@ func restore_building_ids() -> void:
 
 				if not current_id.is_empty():
 					continue
+
+				if kind == "Merkez":
+					target = candidate
+					break
 
 				var distance := Vector2(
 					candidate.position.x - x,
@@ -807,15 +90,29 @@ func restore_building_ids() -> void:
 
 		used[target.get_instance_id()] = true
 
-		if not _id_in_use(
-			saved_id, target
-		):
-			target.set_meta(
-				"building_id", saved_id
+		if not saved_id.is_empty():
+			if not _id_in_use(saved_id, target):
+				target.set_meta(
+					"building_id", saved_id
+				)
+
+		# The main save restores other buildings.
+		# The city hall position is stored here.
+		if kind == "Merkez":
+			var previous := target.position
+			var restored := Vector3(
+				x, previous.y, z
 			)
 
-# Compatibility with previous builds.
-func load_positions() -> void:
-	restore_building_ids()
-	ensure_all_ids()
+			target.position = restored
+
+			var preview := game.get_node_or_null(
+				"OttomanCityHallPreview"
+			) as Node3D
+
+			if preview != null:
+				preview.position += (
+					restored - previous
+				)
+
 	sync_occupied()
