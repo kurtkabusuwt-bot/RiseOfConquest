@@ -1,4 +1,3 @@
-
 extends "res://war_conquest_31.gd"
 
 # RISE OF CONQUEST - SIEGE WAR 7.3
