@@ -1,12 +1,15 @@
 
 extends Node
 
-# RISE OF CONQUEST
-# CITY INTERACTION 3.0
-# Godot 4.4.1
+# RISE OF CONQUEST - BUILD 91.2
+# MOBILE CITY BUILDING INTERACTION
+# Godot 4.4.1 / Android
 
 const HOLD_TIME := 0.55
+const MOVE_LIMIT := 47.0
+const MIN_SPACING := 4.5
 const SAVE_PATH := "user://city_layout_v3.json"
+
 const TYPES := [
 	"Merkez", "Ev", "Kule", "Kışla",
 	"Çiftlik", "Kereste", "Taşocağı"
@@ -26,21 +29,25 @@ var names_enabled := false
 var hold_timer := 0.0
 var press_point := Vector2.ZERO
 var selected: Node3D
+var selected_origin := Vector3.ZERO
+var moved := false
 var fps_timer := 0.0
 var refresh_timer := 0.0
-
 
 func _ready() -> void:
 	call_deferred("initialize")
 
-
 func initialize() -> void:
 	game = get_parent() as Node3D
+
+	if game == null:
+		return
+
 	camera = game.get("camera") as Camera3D
+
 	create_interface()
 	load_positions()
 	refresh_labels()
-
 
 func create_interface() -> void:
 	var layer := CanvasLayer.new()
@@ -64,7 +71,7 @@ func create_interface() -> void:
 	fps_label.offset_bottom = 92
 	fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	fps_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	fps_label.add_theme_font_size_override("font_size", 20)
+	fps_label.add_theme_font_size_override("font_size", 18)
 	overlay.add_child(fps_label)
 
 	names_button = Button.new()
@@ -77,10 +84,8 @@ func create_interface() -> void:
 	names_button.toggled.connect(
 		func(enabled: bool) -> void:
 			names_enabled = enabled
-			refresh_labels()
 			update_labels()
 	)
-
 
 func _process(delta: float) -> void:
 	if game == null or camera == null:
@@ -94,28 +99,21 @@ func _process(delta: float) -> void:
 		var fps := Engine.get_frames_per_second()
 		fps_label.text = "FPS: %d" % fps
 
-		var color := Color.GREEN
-		if fps < 30:
-			color = Color.RED
-		elif fps < 55:
-			color = Color.YELLOW
-
-		fps_label.add_theme_color_override(
-			"font_color", color
-		)
-
 	if refresh_timer >= 0.5:
 		refresh_timer = 0.0
 		refresh_labels()
 
 	if pressing and not holding:
-		hold_timer += delta
-		if hold_timer >= HOLD_TIME:
-			begin_hold()
+		if not interaction_allowed():
+			cancel_press()
+		else:
+			hold_timer += delta
+
+			if hold_timer >= HOLD_TIME:
+				begin_hold()
 
 	if names_enabled or holding:
 		update_labels()
-
 
 func building_kind(node: Node3D) -> String:
 	var name_text := String(node.name)
@@ -126,6 +124,7 @@ func building_kind(node: Node3D) -> String:
 
 		if name_text.begins_with(kind):
 			var suffix := name_text.substr(kind.length())
+
 			if suffix.is_valid_int():
 				return kind
 
@@ -133,7 +132,6 @@ func building_kind(node: Node3D) -> String:
 			return kind
 
 	return ""
-
 
 func get_buildings() -> Array[Node3D]:
 	var result: Array[Node3D] = []
@@ -144,11 +142,11 @@ func get_buildings() -> Array[Node3D]:
 	for child in game.get_children():
 		if child is Node3D:
 			var building := child as Node3D
+
 			if building_kind(building) != "":
 				result.append(building)
 
 	return result
-
 
 func building_title(node: Node3D) -> String:
 	match building_kind(node):
@@ -163,8 +161,10 @@ func building_title(node: Node3D) -> String:
 
 	return building_kind(node)
 
-
 func refresh_labels() -> void:
+	if overlay == null:
+		return
+
 	for building in get_buildings():
 		var id := building.get_instance_id()
 
@@ -180,12 +180,6 @@ func refresh_labels() -> void:
 		label.add_theme_color_override(
 			"font_shadow_color", Color.BLACK
 		)
-		label.add_theme_constant_override(
-			"shadow_offset_x", 2
-		)
-		label.add_theme_constant_override(
-			"shadow_offset_y", 2
-		)
 		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		label.visible = false
 		overlay.add_child(label)
@@ -196,7 +190,6 @@ func refresh_labels() -> void:
 		}
 
 	update_labels()
-
 
 func update_labels() -> void:
 	if camera == null:
@@ -237,7 +230,6 @@ func update_labels() -> void:
 				label.size.x * 0.5, 0
 			)
 
-
 func interaction_allowed() -> bool:
 	if game == null or camera == null:
 		return false
@@ -254,8 +246,15 @@ func interaction_allowed() -> bool:
 	if bool(game.get("ruler_mode")):
 		return false
 
-	return true
+	var mobile := game.get_node_or_null("MobileMenu90")
 
+	if mobile != null:
+		var panel: Variant = mobile.get("action_panel")
+
+		if panel is Control and panel.visible:
+			return false
+
+	return true
 
 func screen_to_ground(pos: Vector2) -> Vector3:
 	var origin := camera.project_ray_origin(pos)
@@ -266,11 +265,10 @@ func screen_to_ground(pos: Vector2) -> Vector3:
 
 	var distance := -origin.y / direction.y
 
-	if distance <= 0:
+	if distance <= 0.0:
 		return Vector3.INF
 
 	return origin + direction * distance
-
 
 func find_building(pos: Vector2) -> Node3D:
 	var best: Node3D = null
@@ -290,10 +288,7 @@ func find_building(pos: Vector2) -> Node3D:
 		if camera.is_position_behind(center):
 			continue
 
-		var screen_center := camera.unproject_position(
-			center
-		)
-
+		var screen_center := camera.unproject_position(center)
 		var distance := pos.distance_to(screen_center)
 
 		if distance < radius and distance < best_distance:
@@ -302,9 +297,10 @@ func find_building(pos: Vector2) -> Node3D:
 
 	return best
 
-
 func _input(event: InputEvent) -> void:
 	if not interaction_allowed():
+		if finger != -1:
+			cancel_press()
 		return
 
 	if event is InputEventScreenTouch:
@@ -327,12 +323,10 @@ func _input(event: InputEvent) -> void:
 			return
 
 		if holding:
-			if selected != null:
-				move_building(event.position)
-
+			move_building(event.position)
 			get_viewport().set_input_as_handled()
 
-		elif event.position.distance_to(press_point) > 22:
+		elif event.position.distance_to(press_point) > 22.0:
 			pressing = false
 
 	elif event is InputEventMouseButton:
@@ -341,6 +335,7 @@ func _input(event: InputEvent) -> void:
 
 		if event.pressed:
 			start_press(event.position, -2)
+
 		elif finger == -2:
 			var was_holding := holding
 			finish_press()
@@ -353,59 +348,53 @@ func _input(event: InputEvent) -> void:
 			return
 
 		if holding:
-			if selected != null:
-				move_building(event.position)
-
+			move_building(event.position)
 			get_viewport().set_input_as_handled()
 
-		elif event.position.distance_to(press_point) > 22:
+		elif event.position.distance_to(press_point) > 22.0:
 			pressing = false
-
 
 func start_press(pos: Vector2, index: int) -> void:
 	if finger != -1:
 		return
 
-	if pos.y < 65:
+	var screen := get_viewport().get_visible_rect().size
+
+	if pos.y < 145.0:
 		return
 
-	if pos.y > get_viewport().get_visible_rect().size.y - 145:
+	if pos.y > screen.y - 100.0:
 		return
 
-	if pos.x < 200 and pos.y < 140:
+	var building := find_building(pos)
+
+	if building == null:
 		return
 
 	finger = index
 	pressing = true
 	holding = false
+	moved = false
 	hold_timer = 0.0
 	press_point = pos
-	selected = null
-
+	selected = building
+	selected_origin = building.position
 
 func begin_hold() -> void:
-	if not pressing:
+	if not pressing or selected == null:
 		return
 
 	holding = true
-	selected = find_building(press_point)
+	pressing = false
+	game.set("dragging", true)
 	update_labels()
 
+func valid_position(target: Vector3) -> bool:
+	if absf(target.x) > MOVE_LIMIT:
+		return false
 
-func move_building(pos: Vector2) -> void:
-	if selected == null:
-		return
-
-	var ground := screen_to_ground(pos)
-
-	if not ground.is_finite():
-		return
-
-	var target := Vector3(
-		clampf(roundf(ground.x), -47, 47),
-		0,
-		clampf(roundf(ground.z), -47, 47)
-	)
+	if absf(target.z) > MOVE_LIMIT:
+		return false
 
 	for other in get_buildings():
 		if other == selected:
@@ -416,11 +405,36 @@ func move_building(pos: Vector2) -> void:
 			target.z - other.position.z
 		).length()
 
-		if distance < 4.5:
-			return
+		if distance < MIN_SPACING:
+			return false
+
+	return true
+
+func move_building(pos: Vector2) -> void:
+	if not holding or selected == null:
+		return
+
+	var ground := screen_to_ground(pos)
+
+	if not ground.is_finite():
+		return
+
+	var target := Vector3(
+		roundf(ground.x),
+		selected.position.y,
+		roundf(ground.z)
+	)
+
+	if not valid_position(target):
+		return
 
 	var offset := target - selected.position
+
+	if offset.length_squared() < 0.001:
+		return
+
 	selected.position = target
+	moved = true
 
 	if building_kind(selected) == "Merkez":
 		var preview := game.get_node_or_null(
@@ -432,9 +446,8 @@ func move_building(pos: Vector2) -> void:
 
 	update_labels()
 
-
 func finish_press() -> void:
-	if holding and selected != null:
+	if holding and selected != null and moved:
 		save_positions()
 
 	var was_holding := holding
@@ -442,6 +455,7 @@ func finish_press() -> void:
 	finger = -1
 	pressing = false
 	holding = false
+	moved = false
 	selected = null
 
 	if was_holding:
@@ -449,14 +463,13 @@ func finish_press() -> void:
 
 	update_labels()
 
-
 func cancel_press() -> void:
 	finger = -1
 	pressing = false
 	holding = false
+	moved = false
 	selected = null
 	update_labels()
-
 
 func save_positions() -> void:
 	var entries: Array[Dictionary] = []
@@ -475,7 +488,6 @@ func save_positions() -> void:
 	if file != null:
 		file.store_string(JSON.stringify(entries))
 		file.close()
-
 
 func load_positions() -> void:
 	if not FileAccess.file_exists(SAVE_PATH):
@@ -518,10 +530,36 @@ func load_positions() -> void:
 			continue
 
 		var new_pos := Vector3(
-			float(entry.get("x", target.position.x)),
-			0,
-			float(entry.get("z", target.position.z))
+			clampf(
+				float(entry.get("x", target.position.x)),
+				-MOVE_LIMIT,
+				MOVE_LIMIT
+			),
+			target.position.y,
+			clampf(
+				float(entry.get("z", target.position.z)),
+				-MOVE_LIMIT,
+				MOVE_LIMIT
+			)
 		)
+
+		var valid := true
+
+		for other in buildings:
+			if other == target:
+				continue
+
+			var distance := Vector2(
+				new_pos.x - other.position.x,
+				new_pos.z - other.position.z
+			).length()
+
+			if distance < MIN_SPACING:
+				valid = false
+				break
+
+		if not valid:
+			continue
 
 		var offset := new_pos - target.position
 		target.position = new_pos
