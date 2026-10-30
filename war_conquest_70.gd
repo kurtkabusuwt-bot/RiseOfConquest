@@ -1,9 +1,11 @@
 
 extends "res://war_conquest_31.gd"
 
-# RISE OF CONQUEST - SIEGE WAR 7.2
-# HERO COMBAT INTEGRATION
+# RISE OF CONQUEST - SIEGE WAR 7.3
+# DUAL COMMANDERS AND BATTLE XP
 # Godot 4.4.1 / Android
+
+const COMMANDER_SAVE := "user://roc_commanders_v1.json"
 
 const UNIT_NAMES := {
 	"infantry": "Piyade",
@@ -19,11 +21,240 @@ var breach_announced: bool = false
 var last_wall_hp: float = 0.0
 
 var hero_combat: Node = null
-var hero_menu: Node = null
+var hero_progression: Node = null
 
-var active_commander: String = ""
-var active_secondary: String = ""
-var commander_siege_bonus: float = 1.0
+var primary_commander := "Fatih Sultan Mehmet"
+var secondary_commander := ""
+var active_commander := ""
+var active_secondary := ""
+
+var commander_siege_bonus := 1.0
+
+var commander_canvas: CanvasLayer
+var commander_panel: PanelContainer
+var primary_selector: OptionButton
+var secondary_selector: OptionButton
+var commander_info: Label
+
+var commander_names: Array[String] = []
+
+
+func _ready() -> void:
+	load_commanders()
+	super._ready()
+	call_deferred("setup_commanders")
+
+
+func setup_commanders() -> void:
+	if game == null:
+		game = get_tree().current_scene as Node3D
+
+	if game == null:
+		return
+
+	hero_combat = game.get_node_or_null("HeroCombat")
+	hero_progression = game.get_node_or_null(
+		"HeroProgression"
+	)
+
+	if hero_combat == null:
+		push_warning("HeroCombat bulunamadi.")
+		return
+
+	commander_names.clear()
+
+	for hero_name in hero_combat.HERO_ROLES.keys():
+		commander_names.append(str(hero_name))
+
+	commander_names.sort()
+
+	build_commander_ui()
+
+
+func build_commander_ui() -> void:
+	commander_canvas = CanvasLayer.new()
+	commander_canvas.layer = 65
+	add_child(commander_canvas)
+
+	var toggle := Button.new()
+	toggle.text = "KOMUTANLAR"
+	toggle.position = Vector2(12, 205)
+	toggle.custom_minimum_size = Vector2(165, 45)
+	commander_canvas.add_child(toggle)
+	toggle.pressed.connect(toggle_commander_panel)
+
+	commander_panel = PanelContainer.new()
+	commander_panel.position = Vector2(190, 65)
+	commander_panel.custom_minimum_size = Vector2(360, 0)
+	commander_canvas.add_child(commander_panel)
+
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 10)
+	commander_panel.add_child(content)
+
+	var heading := Label.new()
+	heading.text = "ORDU KOMUTANLARI"
+	heading.add_theme_font_size_override(
+		"font_size", 24
+	)
+	content.add_child(heading)
+
+	var first_label := Label.new()
+	first_label.text = "ANA KOMUTAN"
+	content.add_child(first_label)
+
+	primary_selector = OptionButton.new()
+	primary_selector.custom_minimum_size = Vector2(320, 45)
+	content.add_child(primary_selector)
+
+	var second_label := Label.new()
+	second_label.text = "YARDIMCI KOMUTAN"
+	content.add_child(second_label)
+
+	secondary_selector = OptionButton.new()
+	secondary_selector.custom_minimum_size = Vector2(320, 45)
+	content.add_child(secondary_selector)
+
+	secondary_selector.add_item("Yok")
+
+	for hero_name in commander_names:
+		primary_selector.add_item(hero_name)
+		secondary_selector.add_item(hero_name)
+
+	for i in range(commander_names.size()):
+		if commander_names[i] == primary_commander:
+			primary_selector.select(i)
+
+		if commander_names[i] == secondary_commander:
+			secondary_selector.select(i + 1)
+
+	commander_info = Label.new()
+	commander_info.autowrap_mode = (
+		TextServer.AUTOWRAP_WORD_SMART
+	)
+	content.add_child(commander_info)
+
+	var save_button := Button.new()
+	save_button.text = "KOMUTANLARI ATA"
+	save_button.custom_minimum_size.y = 45
+	content.add_child(save_button)
+	save_button.pressed.connect(assign_commanders)
+
+	var close_button := Button.new()
+	close_button.text = "KAPAT"
+	content.add_child(close_button)
+	close_button.pressed.connect(toggle_commander_panel)
+
+	commander_panel.visible = false
+	update_commander_info()
+
+
+func toggle_commander_panel() -> void:
+	if fighting:
+		return
+
+	if commander_panel == null:
+		return
+
+	commander_panel.visible = not commander_panel.visible
+
+
+func assign_commanders() -> void:
+	if fighting:
+		return
+
+	if commander_names.is_empty():
+		return
+
+	var first_index := primary_selector.selected
+	var second_index := secondary_selector.selected
+
+	if first_index < 0:
+		return
+
+	var first_name := commander_names[first_index]
+	var second_name := ""
+
+	if second_index > 0:
+		second_name = commander_names[second_index - 1]
+
+	if first_name == second_name:
+		commander_info.text = (
+			"Ayni kahraman iki goreve atanamaz."
+		)
+		return
+
+	primary_commander = first_name
+	secondary_commander = second_name
+
+	save_commanders()
+	update_commander_info()
+
+
+func update_commander_info() -> void:
+	if commander_info == null:
+		return
+
+	var second_name := secondary_commander
+
+	if second_name.is_empty():
+		second_name = "Atanmadi"
+
+	commander_info.text = (
+		"Ana komutan: " + primary_commander +
+		"\nYardimci: " + second_name +
+		"\nYardimci bonusu: %50"
+	)
+
+
+func save_commanders() -> void:
+	var file := FileAccess.open(
+		COMMANDER_SAVE,
+		FileAccess.WRITE
+	)
+
+	if file == null:
+		return
+
+	var data := {
+		"primary": primary_commander,
+		"secondary": secondary_commander
+	}
+
+	file.store_string(JSON.stringify(data))
+	file.close()
+
+
+func load_commanders() -> void:
+	if not FileAccess.file_exists(COMMANDER_SAVE):
+		return
+
+	var file := FileAccess.open(
+		COMMANDER_SAVE,
+		FileAccess.READ
+	)
+
+	if file == null:
+		return
+
+	var parsed: Variant = JSON.parse_string(
+		file.get_as_text()
+	)
+	file.close()
+
+	if not (parsed is Dictionary):
+		return
+
+	primary_commander = str(
+		parsed.get(
+			"primary",
+			"Fatih Sultan Mehmet"
+		)
+	)
+
+	secondary_commander = str(
+		parsed.get("secondary", "")
+	)
 
 
 func build_world() -> void:
@@ -35,32 +266,6 @@ func build_world() -> void:
 		Vector3.UP
 	)
 	battle_camera.fov = 72.0
-
-
-func find_hero_system() -> void:
-	if game == null:
-		return
-
-	hero_combat = game.get_node_or_null(
-		"HeroCombat"
-	)
-	hero_menu = game.get_node_or_null(
-		"HeroMenu"
-	)
-
-
-func get_selected_commander() -> String:
-	if hero_menu == null:
-		return ""
-
-	var name: String = str(
-		hero_menu.get("selected_hero")
-	)
-
-	if name == "<null>":
-		return ""
-
-	return name
 
 
 func get_unit_bonus(kind: String) -> Dictionary:
@@ -92,9 +297,6 @@ func apply_commander_bonuses() -> void:
 	if hero_combat == null:
 		return
 
-	if active_commander.is_empty():
-		return
-
 	for unit in blue_units:
 		var kind: String = str(unit["kind"])
 		var bonus: Dictionary = get_unit_bonus(kind)
@@ -102,7 +304,7 @@ func apply_commander_bonuses() -> void:
 		if bonus.is_empty():
 			continue
 
-		var attack: float = clampf(
+		var attack := clampf(
 			float(bonus.get(
 				"attack_multiplier", 1.0
 			)),
@@ -110,7 +312,7 @@ func apply_commander_bonuses() -> void:
 			2.5
 		)
 
-		var defense: float = clampf(
+		var defense := clampf(
 			float(bonus.get(
 				"defense_multiplier", 1.0
 			)),
@@ -118,7 +320,7 @@ func apply_commander_bonuses() -> void:
 			2.5
 		)
 
-		var health: float = clampf(
+		var health := clampf(
 			float(bonus.get(
 				"health_multiplier", 1.0
 			)),
@@ -130,15 +332,11 @@ func apply_commander_bonuses() -> void:
 			float(unit["damage"]) * attack
 		)
 
-		# Current combat module uses HP directly.
-		# Defense is represented as extra durability.
 		unit["hp"] = (
 			float(unit["hp"]) * health * defense
 		)
 
-	var siege_bonus: Dictionary = get_unit_bonus(
-		"siege"
-	)
+	var siege_bonus := get_unit_bonus("siege")
 
 	if not siege_bonus.is_empty():
 		commander_siege_bonus = clampf(
@@ -156,10 +354,20 @@ func deploy() -> void:
 
 
 func begin_battle() -> void:
-	find_hero_system()
+	if fighting:
+		return
 
-	active_commander = get_selected_commander()
-	active_secondary = ""
+	if hero_combat == null and game != null:
+		hero_combat = game.get_node_or_null(
+			"HeroCombat"
+		)
+
+	active_commander = primary_commander
+	active_secondary = secondary_commander
+
+	if active_secondary == active_commander:
+		active_secondary = ""
+
 	commander_siege_bonus = 1.0
 
 	super.begin_battle()
@@ -173,11 +381,16 @@ func begin_battle() -> void:
 	breach_announced = false
 	last_wall_hp = float(siege.wall_hp)
 
-	if not active_commander.is_empty():
+	last_report += (
+		"\nAna komutan: " + active_commander
+	)
+
+	if not active_secondary.is_empty():
 		last_report += (
-			"\nKomutan: " + active_commander
+			"\nYardimci: " + active_secondary
 		)
-		update_panel()
+
+	update_panel()
 
 
 func _process(delta: float) -> void:
@@ -208,15 +421,15 @@ func perform_siege_attack() -> void:
 	if bool(siege.wall_destroyed):
 		return
 
-	var siege_count: int = 0
-	var infantry_count: int = 0
-	var archers_count: int = 0
+	var siege_count := 0
+	var infantry_count := 0
+	var archers_count := 0
 
 	for unit in blue_units:
 		if not bool(unit["alive"]):
 			continue
 
-		var kind: String = str(unit["kind"])
+		var kind := str(unit["kind"])
 
 		if kind == "siege":
 			siege_count += 1
@@ -225,12 +438,10 @@ func perform_siege_attack() -> void:
 		elif kind == "archers":
 			archers_count += 1
 
-	var damage: float = (
-		float(siege_count) * 19.0
-	)
+	var damage := float(siege_count) * 19.0
 
 	if infantry_count > 0:
-		var gate_attackers: int = 0
+		var gate_attackers := 0
 
 		for unit in blue_units:
 			if not bool(unit["alive"]):
@@ -244,9 +455,7 @@ func perform_siege_attack() -> void:
 			if soldier.position.x > 13.0:
 				gate_attackers += 1
 
-		damage += (
-			float(gate_attackers) * 3.5
-		)
+		damage += float(gate_attackers) * 3.5
 
 	if archers_count > 0 and siege_count > 0:
 		damage += minf(
@@ -259,7 +468,7 @@ func perform_siege_attack() -> void:
 
 	damage *= commander_siege_bonus
 
-	var old_hp: float = float(siege.wall_hp)
+	var old_hp := float(siege.wall_hp)
 	siege.damage(damage)
 
 	if siege.has_method("spawn_impact"):
@@ -273,34 +482,71 @@ func perform_siege_attack() -> void:
 
 	last_wall_hp = float(siege.wall_hp)
 
-	if (
-		old_hp > 0.0 and
-		float(siege.wall_hp) <= 0.0
-	):
+	if old_hp > 0.0 and float(siege.wall_hp) <= 0.0:
 		breach_announced = true
 		last_report = "KALE SURLARI YIKILDI!"
 		update_panel()
 
 
+func award_hero_experience(victory: bool) -> String:
+	if hero_progression == null:
+		return "Kahraman deneyim sistemi bulunamadi."
+
+	var primary_xp := 150 if victory else 50
+	var secondary_xp := 90 if victory else 30
+
+	var report := ""
+
+	if not active_commander.is_empty():
+		var levels: int = hero_progression.add_xp(
+			active_commander,
+			primary_xp
+		)
+
+		report += (
+			"\n%s: +%d XP" %
+			[active_commander, primary_xp]
+		)
+
+		if levels > 0:
+			report += (
+				" | +%d seviye" % levels
+			)
+
+	if not active_secondary.is_empty():
+		var levels: int = hero_progression.add_xp(
+			active_secondary,
+			secondary_xp
+		)
+
+		report += (
+			"\n%s: +%d XP" %
+			[active_secondary, secondary_xp]
+		)
+
+		if levels > 0:
+			report += (
+				" | +%d seviye" % levels
+			)
+
+	return report
+
+
 func finish_battle() -> void:
-	var was_fighting: bool = fighting
-	var breach: bool = bool(siege.wall_destroyed)
-	var wall_remaining: int = int(siege.wall_hp)
-	var impacts: int = impact_count
-	var commander_name: String = active_commander
+	if not fighting:
+		return
+
+	var breach := bool(siege.wall_destroyed)
+	var wall_remaining := int(siege.wall_hp)
+	var impacts := impact_count
+
+	var previous_wins := war_wins
 
 	super.finish_battle()
 
-	if not was_fighting:
-		return
+	var victory := war_wins > previous_wins
 
-	last_report += "\nKUSATMA 7.2"
-
-	if not commander_name.is_empty():
-		last_report += (
-			"\nKomutan: " + commander_name
-		)
-
+	last_report += "\nKUSATMA 7.3"
 	last_report += (
 		"\nMancinik atisi: %d" % impacts
 	)
@@ -312,6 +558,9 @@ func finish_battle() -> void:
 			"\nSur dayanikliligi: %d" %
 			wall_remaining
 		)
+
+	last_report += "\nKOMUTAN DENEYIMLERI"
+	last_report += award_hero_experience(victory)
 
 	save_war()
 	update_panel()
