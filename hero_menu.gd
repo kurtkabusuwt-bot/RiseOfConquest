@@ -2,7 +2,7 @@
 extends CanvasLayer
 
 # RISE OF CONQUEST
-# HERO MENU 1.0 - GODOT 4.4.1
+# HERO MENU 2.0 - GODOT 4.4.1
 
 const HEROES := {
 	"Osmanlı": [
@@ -73,11 +73,13 @@ const LEGENDARY := [
 	"Hasan Sabbah"
 ]
 
+var progression: Node
 var root: Control
 var panel: PanelContainer
-var list_box: VBoxContainer
-var detail: RichTextLabel
 var hero_button: Button
+var list_box: VBoxContainer
+var detail_box: VBoxContainer
+var message_label: Label
 
 var selected_civ := "Osmanlı"
 var selected_hero := "Fatih Sultan Mehmet"
@@ -85,6 +87,7 @@ var selected_hero := "Fatih Sultan Mehmet"
 
 func _ready() -> void:
 	layer = 80
+	progression = get_node_or_null("../HeroProgression")
 	build_ui()
 
 
@@ -95,10 +98,25 @@ func make_button(
 ) -> Button:
 	var button := Button.new()
 	button.text = label_text
-	button.custom_minimum_size = Vector2(150, 46)
+	button.custom_minimum_size = Vector2(170, 46)
 	parent.add_child(button)
 	button.pressed.connect(callback)
 	return button
+
+
+func make_label(
+	label_text: String,
+	parent: Node,
+	font_size: int = 20
+) -> Label:
+	var label := Label.new()
+	label.text = label_text
+	label.add_theme_font_size_override(
+		"font_size", font_size
+	)
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	parent.add_child(label)
+	return label
 
 
 func build_ui() -> void:
@@ -121,45 +139,38 @@ func build_ui() -> void:
 	panel.set_anchors_and_offsets_preset(
 		Control.PRESET_FULL_RECT
 	)
-	panel.offset_left = 42
-	panel.offset_top = 35
-	panel.offset_right = -42
-	panel.offset_bottom = -35
+	panel.offset_left = 40
+	panel.offset_top = 30
+	panel.offset_right = -40
+	panel.offset_bottom = -30
 	root.add_child(panel)
 
-	var background := StyleBoxFlat.new()
-	background.bg_color = Color(0.055, 0.075, 0.12, 0.97)
-	background.border_color = Color(0.7, 0.53, 0.23)
-	background.set_border_width_all(3)
-	background.set_corner_radius_all(12)
-	panel.add_theme_stylebox_override(
-		"panel",
-		background
-	)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.055, 0.075, 0.12, 0.98)
+	style.border_color = Color(0.75, 0.55, 0.24)
+	style.set_border_width_all(3)
+	style.set_corner_radius_all(12)
+	style.set_content_margin_all(14)
+	panel.add_theme_stylebox_override("panel", style)
 
 	var outer := VBoxContainer.new()
-	outer.add_theme_constant_override("separation", 12)
+	outer.add_theme_constant_override("separation", 10)
 	panel.add_child(outer)
 
 	var header := HBoxContainer.new()
 	outer.add_child(header)
 
-	var title := Label.new()
-	title.text = "KAHRAMANLAR  -  35 KOMUTAN"
-	title.add_theme_font_size_override(
-		"font_size", 28
+	var title := make_label(
+		"KAHRAMANLAR  |  35 KOMUTAN",
+		header,
+		26
 	)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(title)
 
-	make_button(
-		"KAPAT  X",
-		header,
-		close_menu
-	)
+	make_button("KAPAT X", header, close_menu)
 
 	var civ_scroll := ScrollContainer.new()
-	civ_scroll.custom_minimum_size.y = 60
+	civ_scroll.custom_minimum_size.y = 58
 	civ_scroll.horizontal_scroll_mode = (
 		ScrollContainer.SCROLL_MODE_AUTO
 	)
@@ -169,40 +180,47 @@ func build_ui() -> void:
 	civ_scroll.add_child(civ_row)
 
 	for civ in HEROES.keys():
-		var civilization: String = civ
+		var civ_name: String = civ
 		make_button(
-			civilization,
+			civ_name,
 			civ_row,
 			func() -> void:
-				choose_civ(civilization)
+				choose_civ(civ_name)
 		)
 
 	var body := HSplitContainer.new()
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	outer.add_child(body)
 
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size.x = 320
-	body.add_child(scroll)
+	var hero_scroll := ScrollContainer.new()
+	hero_scroll.custom_minimum_size.x = 300
+	body.add_child(hero_scroll)
 
 	list_box = VBoxContainer.new()
 	list_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(list_box)
+	hero_scroll.add_child(list_box)
 
-	detail = RichTextLabel.new()
-	detail.bbcode_enabled = true
-	detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	detail.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	detail.add_theme_font_size_override(
-		"normal_font_size", 22
+	var detail_scroll := ScrollContainer.new()
+	detail_scroll.size_flags_horizontal = (
+		Control.SIZE_EXPAND_FILL
 	)
-	body.add_child(detail)
+	body.add_child(detail_scroll)
+
+	detail_box = VBoxContainer.new()
+	detail_box.size_flags_horizontal = (
+		Control.SIZE_EXPAND_FILL
+	)
+	detail_box.add_theme_constant_override(
+		"separation", 12
+	)
+	detail_scroll.add_child(detail_box)
 
 	panel.visible = false
 	refresh()
 
 
 func open_menu() -> void:
+	progression = get_node_or_null("../HeroProgression")
 	panel.visible = true
 	hero_button.visible = false
 	refresh()
@@ -225,22 +243,19 @@ func choose_hero(hero: String) -> void:
 
 
 func refresh() -> void:
-	if list_box == null:
-		return
-
 	for child in list_box.get_children():
+		list_box.remove_child(child)
 		child.queue_free()
 
 	for hero in HEROES[selected_civ]:
 		var hero_name: String = hero
-		var rarity := (
-			"EFSANEVİ"
-			if hero_name in LEGENDARY
-			else "NADİR"
-		)
+		var rarity := "NADİR"
+
+		if hero_name in LEGENDARY:
+			rarity = "EFSANEVİ"
 
 		make_button(
-			hero_name + "  |  " + rarity,
+			hero_name + " | " + rarity,
 			list_box,
 			func() -> void:
 				choose_hero(hero_name)
@@ -250,39 +265,187 @@ func refresh() -> void:
 
 
 func refresh_detail() -> void:
-	var rarity := (
-		"EFSANEVİ"
-		if selected_hero in LEGENDARY
-		else "NADİR"
+	for child in detail_box.get_children():
+		detail_box.remove_child(child)
+		child.queue_free()
+
+	if progression == null:
+		make_label(
+			"Geliştirme sistemi bulunamadı.",
+			detail_box
+		)
+		return
+
+	var hero: Dictionary = progression.get_hero(
+		selected_hero
 	)
 
-	var color := (
-		"#f5cc68"
-		if selected_hero in LEGENDARY
-		else "#88c6f5"
+	var level := int(hero.get("level", 1))
+	var xp := int(hero.get("xp", 0))
+	var stars := int(hero.get("stars", 1))
+	var points := int(hero.get("skill_points", 0))
+	var skills: Array = hero.get(
+		"skills", [0, 0, 0, 0]
 	)
 
-	detail.text = (
-		"[center][font_size=32][color=%s]%s" +
-		"[/color][/font_size][/center]\n\n"
-	) % [color, selected_hero]
+	var rarity := "NADİR"
+	if selected_hero in LEGENDARY:
+		rarity = "EFSANEVİ"
 
-	detail.text += (
-		"[center]%s  -  %s[/center]\n\n"
-	) % [selected_civ, rarity]
-
-	detail.text += "SEVİYE  1 / 60\n\n"
-	detail.text += "YILDIZ  ☆ ☆ ☆ ☆ ☆ ☆\n\n"
-	detail.text += "YETENEKLER\n"
-	detail.text += "  - Aktif beceri: Yakında\n"
-	detail.text += "  - Pasif beceriler: Yakında\n\n"
-	detail.text += "EKİPMAN\n"
-	detail.text += "  - Henüz donatılmadı\n\n"
-	detail.text += "3D KAHRAMAN MODELİ\n"
-	detail.text += "  - Model hazır olduğunda gösterilecek\n\n"
-	detail.text += (
-		"[color=#aab5c7]Bu sürüm koleksiyon " +
-		"menüsüdür. Seviye, yetenek ve ekipman " +
-		"geliştirmesi sonraki aşamada " +
-		"etkinleştirilecek.[/color]"
+	var name_label := make_label(
+		selected_hero,
+		detail_box,
+		30
 	)
+
+	if rarity == "EFSANEVİ":
+		name_label.add_theme_color_override(
+			"font_color",
+			Color(1.0, 0.78, 0.32)
+		)
+
+	make_label(
+		selected_civ + "  |  " + rarity,
+		detail_box,
+		18
+	)
+
+	make_label(
+		"SEVİYE: %d / 60" % level,
+		detail_box,
+		23
+	)
+
+	var xp_bar := ProgressBar.new()
+	xp_bar.custom_minimum_size.y = 25
+	detail_box.add_child(xp_bar)
+
+	if level >= 60:
+		xp_bar.max_value = 1
+		xp_bar.value = 1
+		make_label(
+			"MAKSİMUM SEVİYE",
+			detail_box
+		)
+	else:
+		var needed: int = progression.xp_needed(level)
+		xp_bar.max_value = needed
+		xp_bar.value = xp
+
+		make_label(
+			"Deneyim: %d / %d" % [xp, needed],
+			detail_box,
+			17
+		)
+
+	make_label(
+		"YILDIZ: %d / 6" % stars,
+		detail_box,
+		22
+	)
+
+	make_label(
+		"Yetenek puanı: %d" % points,
+		detail_box,
+		20
+	)
+
+	var skill_names := [
+		"Aktif Beceri",
+		"Pasif Beceri I",
+		"Pasif Beceri II",
+		"Uzmanlık Becerisi"
+	]
+
+	for i in range(4):
+		var index := i
+		var skill_level := int(skills[i])
+
+		make_button(
+			"%s  %d/5  [+]" % [
+				skill_names[i], skill_level
+			],
+			detail_box,
+			func() -> void:
+				upgrade_skill(index)
+		)
+
+	make_button(
+		"+100 DENEYİM (TEST)",
+		detail_box,
+		add_test_xp
+	)
+
+	make_button(
+		"YILDIZ YÜKSELT",
+		detail_box,
+		upgrade_star
+	)
+
+	message_label = make_label(
+		"",
+		detail_box,
+		18
+	)
+
+	make_label(
+		"3D kahraman modeli ve gerçek savaş " +
+		"ödülleri sonraki güncellemede bağlanacak.",
+		detail_box,
+		16
+	)
+
+
+func add_test_xp() -> void:
+	if progression == null:
+		return
+
+	var gained: int = progression.add_xp(
+		selected_hero, 100
+	)
+
+	refresh_detail()
+	show_message(
+		"+100 deneyim | %d seviye kazanıldı" % gained
+	)
+
+
+func upgrade_star() -> void:
+	if progression == null:
+		return
+
+	var success: bool = progression.upgrade_star(
+		selected_hero
+	)
+
+	refresh_detail()
+
+	if success:
+		show_message("Yıldız yükseltildi!")
+	else:
+		show_message(
+			"Yıldız için gereken seviyeye ulaşmalısın."
+		)
+
+
+func upgrade_skill(index: int) -> void:
+	if progression == null:
+		return
+
+	var success: bool = progression.upgrade_skill(
+		selected_hero, index
+	)
+
+	refresh_detail()
+
+	if success:
+		show_message("Yetenek geliştirildi!")
+	else:
+		show_message(
+			"Yeterli yetenek puanı yok veya beceri maksimum."
+		)
+
+
+func show_message(value: String) -> void:
+	if is_instance_valid(message_label):
+		message_label.text = value
