@@ -1,4 +1,3 @@
-
 [gd_scene load_steps=16 format=3]
 
 [ext_resource type="Script" path="res://main_extended_60.gd" id="1"]
@@ -7,7 +6,7 @@
 [ext_resource type="Script" path="res://conquest_20.gd" id="4"]
 [ext_resource type="Script" path="res://city_upgrade_30.gd" id="5"]
 [ext_resource type="Script" path="res://army_upgrade_30.gd" id="6"]
-[ext_resource type="Script" path="res://war_conquest_70.gd" id="7"]
+[ext_resource type="Script" path="res://war_build_88.gd" id="7"]
 [ext_resource type="Script" path="res://war_expansion_45.gd" id="8"]
 [ext_resource type="Script" path="res://city_expansion_60.gd" id="9"]
 [ext_resource type="Script" path="res://city_life_80.gd" id="10"]
