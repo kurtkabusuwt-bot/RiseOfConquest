@@ -1,23 +1,24 @@
 
 extends Node
 
-# RISE OF CONQUEST - BUILD 95.3
-# MOBILE TOUCH GESTURE GUARD
+# RISE OF CONQUEST - BUILD 96.1
+# MULTITOUCH GESTURE GUARD
 # Godot 4.4.1 / Android
 
 var game: Node
 
 var active_touches: Dictionary = {}
-var multitouch_gesture := false
-var blocked_until_release := false
+var gesture_blocked := false
 
 
 func _ready() -> void:
     game = get_parent()
-    set_process_input(true)
-    process_priority = -100
 
-    print("ROC BUILD 95.3: Touch guard ready")
+    process_priority = 100
+    set_process_input(true)
+    set_process_unhandled_input(true)
+
+    print("ROC BUILD 96.1: Touch guard ready")
 
 
 func _input(event: InputEvent) -> void:
@@ -36,19 +37,18 @@ func _handle_touch(event: InputEventScreenTouch) -> void:
         active_touches[event.index] = event.position
 
         if active_touches.size() >= 2:
-            multitouch_gesture = true
-            blocked_until_release = true
-            _block_ground_tap()
-
+            gesture_blocked = true
+            _mark_dragging()
     else:
         active_touches.erase(event.index)
 
-        if multitouch_gesture:
-            _block_ground_tap()
+        if gesture_blocked:
+            _mark_dragging()
 
         if active_touches.is_empty():
-            multitouch_gesture = false
-            blocked_until_release = false
+            # Keep the release event protected.
+            # Reset on the next touch sequence.
+            gesture_blocked = false
 
 
 func _handle_drag(event: InputEventScreenDrag) -> void:
@@ -58,27 +58,28 @@ func _handle_drag(event: InputEventScreenDrag) -> void:
     active_touches[event.index] = event.position
 
     if active_touches.size() >= 2:
-        multitouch_gesture = true
-        blocked_until_release = true
+        gesture_blocked = true
 
-    if multitouch_gesture or blocked_until_release:
-        _block_ground_tap()
+    if gesture_blocked:
+        _mark_dragging()
 
 
-func _block_ground_tap() -> void:
+func _unhandled_input(event: InputEvent) -> void:
     if not is_instance_valid(game):
         return
 
-    if _has_property("dragging"):
-        game.set("dragging", true)
+    if not gesture_blocked:
+        return
+
+    if event is InputEventScreenTouch:
+        _mark_dragging()
+
+    elif event is InputEventScreenDrag:
+        _mark_dragging()
 
 
-func _has_property(property_name: String) -> bool:
+func _mark_dragging() -> void:
     if not is_instance_valid(game):
-        return false
+        return
 
-    for property in game.get_property_list():
-        if str(property.get("name", "")) == property_name:
-            return true
-
-    return false
+    game.set("dragging", true)
