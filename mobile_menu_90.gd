@@ -1,8 +1,8 @@
 
 extends CanvasLayer
 
-# RISE OF CONQUEST - BUILD 90.5
-# CLEAN MOBILE NAVIGATION
+# RISE OF CONQUEST - BUILD 91.4
+# UNIFIED MOBILE NAVIGATION
 # Godot 4.4.1 / Android
 
 const GOLD := Color(0.91, 0.72, 0.39)
@@ -36,16 +36,13 @@ func _make_style(bg: Color) -> StyleBoxFlat:
 	style.border_color = GOLD
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(12)
-	style.content_margin_left = 10
-	style.content_margin_right = 10
-	style.content_margin_top = 8
-	style.content_margin_bottom = 8
+	style.set_content_margin_all(8)
 	return style
 
 func _make_button(caption: String, action: Callable) -> Button:
 	var button := Button.new()
 	button.text = caption
-	button.custom_minimum_size = Vector2(115, 52)
+	button.custom_minimum_size = Vector2(112, 50)
 	button.add_theme_stylebox_override(
 		"normal", _make_style(BUTTON_BG)
 	)
@@ -53,13 +50,12 @@ func _make_button(caption: String, action: Callable) -> Button:
 		"pressed", _make_style(Color(0.25, 0.34, 0.42))
 	)
 	button.add_theme_color_override("font_color", GOLD)
-	button.add_theme_font_size_override("font_size", 16)
+	button.add_theme_font_size_override("font_size", 15)
 	button.pressed.connect(action)
 	return button
 
 func _build_interface() -> void:
 	root = Control.new()
-	root.name = "CleanMobileUI"
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
@@ -69,7 +65,6 @@ func _build_interface() -> void:
 
 func _build_bottom_bar() -> void:
 	bottom_bar = PanelContainer.new()
-	bottom_bar.name = "MobileBottomBar"
 	bottom_bar.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	bottom_bar.offset_left = 8
 	bottom_bar.offset_right = -8
@@ -96,7 +91,6 @@ func _build_bottom_bar() -> void:
 
 func _build_action_panel() -> void:
 	action_panel = PanelContainer.new()
-	action_panel.name = "MobileActionPanel"
 	action_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
 	action_panel.offset_left = 12
 	action_panel.offset_right = -12
@@ -115,9 +109,8 @@ func _build_action_panel() -> void:
 	layout.add_child(header)
 
 	action_title = Label.new()
-	action_title.text = "RISE OF CONQUEST"
 	action_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	action_title.add_theme_font_size_override("font_size", 22)
+	action_title.add_theme_font_size_override("font_size", 21)
 	action_title.add_theme_color_override("font_color", GOLD)
 	header.add_child(action_title)
 
@@ -140,31 +133,49 @@ func _clear_actions() -> void:
 		action_list.remove_child(child)
 		child.queue_free()
 
-func _add_action(caption: String, method: String, args: Array = []) -> void:
+func _add_action(
+	caption: String,
+	method: String,
+	args: Array = []
+) -> void:
 	var action := func() -> void:
+		_close_panel()
 		if game != null and game.has_method(method):
 			game.callv(method, args)
 		else:
 			push_warning("Eksik oyun fonksiyonu: " + method)
-		_close_panel()
 
 	action_list.add_child(_make_button(caption, action))
 
-func _add_manager_action(caption: String, method: String) -> void:
+func _add_manager_action(
+	caption: String,
+	method: String
+) -> void:
 	var action := func() -> void:
+		_close_panel()
 		if is_instance_valid(manager) and manager.has_method(method):
 			manager.call(method)
 		else:
 			push_warning("Eksik arayuz fonksiyonu: " + method)
-		_close_panel()
 
 	action_list.add_child(_make_button(caption, action))
 
 func _open_commanders() -> void:
+	_close_panel()
 	var war := game.get_node_or_null("WarConquest31")
+
 	if war != null and war.has_method("toggle_commander_panel"):
 		war.toggle_commander_panel()
+
+func _open_war_management() -> void:
 	_close_panel()
+	var war := game.get_node_or_null("WarConquest31")
+
+	if war == null:
+		return
+
+	if war.has_method("toggle_panel"):
+		war.toggle_panel()
 
 func _open_tab(tab: String) -> void:
 	if current_tab == tab and action_panel.visible:
@@ -201,14 +212,22 @@ func _open_tab(tab: String) -> void:
 			_add_action("HEDEF DEGISTIR", "select_next_unit")
 
 		"SAVAS":
-			_add_action("SAVAS BASLAT", "start_battle")
+			action_list.add_child(
+				_make_button(
+					"FETIH YONETIMI",
+					_open_war_management
+				)
+			)
+			_add_action("SEHIR SAVASI BASLAT", "start_battle")
 			_add_action("SALDIR", "order_attack")
 			_add_action("SAVUN", "toggle_hold")
 			_add_action("GERI CEKIL", "retreat_battle")
 
 		"MENU":
 			_add_manager_action("KAHRAMANLAR", "open_heroes")
-			_add_manager_action("KRALLIK YONETIMI", "open_kingdom")
+			_add_manager_action(
+				"KRALLIK YONETIMI", "open_kingdom"
+			)
 			action_list.add_child(
 				_make_button("KOMUTANLAR", _open_commanders)
 			)
