@@ -1,8 +1,8 @@
 
 extends Node
 
-# RISE OF CONQUEST - BUILD 93.2
-# PERSISTENT CITY BUILDING LAYOUT
+# RISE OF CONQUEST - BUILD 93.4
+# PERSISTENT BUILDING IDENTITIES
 # Godot 4.4.1 / Android
 
 const HOLD_TIME := 0.55
@@ -29,10 +29,11 @@ var names_enabled := false
 var hold_timer := 0.0
 var press_point := Vector2.ZERO
 var selected: Node3D
-var selected_origin := Vector3.ZERO
 var moved := false
 var fps_timer := 0.0
 var refresh_timer := 0.0
+
+var local_id_counter := 0
 
 func _ready() -> void:
 	call_deferred("initialize")
@@ -46,7 +47,6 @@ func initialize() -> void:
 	camera = game.get("camera") as Camera3D
 	create_interface()
 
-	# Wait until the main scene has created its buildings.
 	await get_tree().process_frame
 	await get_tree().process_frame
 
@@ -54,6 +54,7 @@ func initialize() -> void:
 		return
 
 	load_positions()
+	ensure_all_ids()
 	sync_occupied()
 	refresh_labels()
 
@@ -151,6 +152,7 @@ func get_buildings() -> Array[Node3D]:
 	for child in game.get_children():
 		if child is Node3D:
 			var building := child as Node3D
+
 			if building_kind(building) != "":
 				result.append(building)
 
@@ -255,6 +257,7 @@ func interaction_allowed() -> bool:
 
 	if mobile != null:
 		var panel: Variant = mobile.get("action_panel")
+
 		if panel is Control and panel.visible:
 			return false
 
@@ -376,7 +379,6 @@ func start_press(pos: Vector2, index: int) -> void:
 	hold_timer = 0.0
 	press_point = pos
 	selected = building
-	selected_origin = building.position
 
 func begin_hold() -> void:
 	if not pressing or not is_instance_valid(selected):
@@ -458,6 +460,7 @@ func move_building(pos: Vector2) -> void:
 
 func finish_press() -> void:
 	if holding and is_instance_valid(selected) and moved:
+		ensure_all_ids()
 		sync_occupied()
 		sync_saved_buildings()
 		save_positions()
@@ -480,6 +483,51 @@ func reset_press() -> void:
 	if is_instance_valid(game):
 		game.set("dragging", false)
 
+func _generate_id() -> String:
+	local_id_counter += 1
+
+	return "building_%s_%s" % [
+		str(Time.get_unix_time_from_system()),
+		str(local_id_counter)
+	]
+
+func _id_in_use(
+	id: String,
+	excluded: Node3D = null
+) -> bool:
+	for building in get_buildings():
+		if building == excluded:
+			continue
+
+		if str(building.get_meta("building_id", "")) == id:
+			return true
+
+	return false
+
+func ensure_id(building: Node3D) -> String:
+	if not is_instance_valid(building):
+		return ""
+
+	var existing := str(
+		building.get_meta("building_id", "")
+	)
+
+	if not existing.is_empty():
+		if not _id_in_use(existing, building):
+			return existing
+
+	var new_id := _generate_id()
+
+	while _id_in_use(new_id, building):
+		new_id = _generate_id()
+
+	building.set_meta("building_id", new_id)
+	return new_id
+
+func ensure_all_ids() -> void:
+	for building in get_buildings():
+		ensure_id(building)
+
 func sync_occupied() -> void:
 	if not is_instance_valid(game):
 		return
@@ -500,10 +548,13 @@ func sync_saved_buildings() -> void:
 	if not is_instance_valid(game):
 		return
 
+	ensure_all_ids()
+
 	var entries: Array[Dictionary] = []
 
 	for building in get_buildings():
 		entries.append({
+			"id": ensure_id(building),
 			"kind": building_kind(building),
 			"x": roundi(building.position.x),
 			"z": roundi(building.position.z)
@@ -515,6 +566,8 @@ func sync_saved_buildings() -> void:
 		game.call("save_game", false)
 
 func save_positions() -> void:
+	ensure_all_ids()
+
 	var entries: Array[Dictionary] = []
 	var kind_counts: Dictionary = {}
 
@@ -524,6 +577,7 @@ func save_positions() -> void:
 		kind_counts[kind] = ordinal + 1
 
 		entries.append({
+			"id": ensure_id(building),
 			"kind": kind,
 			"ordinal": ordinal,
 			"x": building.position.x,
@@ -538,17 +592,20 @@ func save_positions() -> void:
 
 func load_positions() -> void:
 	if not FileAccess.file_exists(SAVE_PATH):
+		ensure_all_ids()
 		return
 
 	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
 
 	if file == null:
+		ensure_all_ids()
 		return
 
 	var data: Variant = JSON.parse_string(file.get_as_text())
 	file.close()
 
 	if not (data is Array):
+		ensure_all_ids()
 		return
 
 	var buildings := get_buildings()
@@ -562,6 +619,7 @@ func load_positions() -> void:
 
 		grouped[kind].append(building)
 
+	var used: Dictionary = {}
 	var legacy_counts: Dictionary = {}
 
 	for entry in data:
@@ -573,33 +631,68 @@ func load_positions() -> void:
 		if not grouped.has(kind):
 			continue
 
-		var ordinal := int(
-			entry.get(
-				"ordinal",
-				legacy_counts.get(kind, 0)
+		var saved_id := str(entry.get("id", ""))
+		var target: Node3D = null
+
+		# First match a previously assigned identity.
+		if not saved_id.is_empty():
+			for building in buildings:
+				if used.has(building.get_instance_id()):
+					continue
+
+				if building_kind(building) != kind:
+					continue
+
+				if str(building.get_meta(
+					"building_id", ""
+				)) == saved_id:
+					target = building
+					break
+
+		# Legacy saves use kind and ordinal.
+		if target == null:
+			var ordinal := int(
+				entry.get(
+					"ordinal",
+					legacy_counts.get(kind, 0)
+				)
 			)
-		)
 
-		legacy_counts[kind] = ordinal + 1
+			var candidates: Array = grouped[kind]
 
-		var candidates: Array = grouped[kind]
+			if ordinal >= 0 and ordinal < candidates.size():
+				var candidate: Node3D = candidates[ordinal]
 
-		if ordinal < 0 or ordinal >= candidates.size():
+				if not used.has(candidate.get_instance_id()):
+					target = candidate
+
+			if target == null:
+				for candidate in candidates:
+					if not used.has(candidate.get_instance_id()):
+						target = candidate
+						break
+
+		legacy_counts[kind] = int(
+			legacy_counts.get(kind, 0)
+		) + 1
+
+		if target == null:
 			continue
 
-		var target: Node3D = candidates[ordinal]
+		used[target.get_instance_id()] = true
+
+		if not saved_id.is_empty():
+			target.set_meta("building_id", saved_id)
 
 		var new_pos := Vector3(
 			clampf(
 				float(entry.get("x", target.position.x)),
-				-MOVE_LIMIT,
-				MOVE_LIMIT
+				-MOVE_LIMIT, MOVE_LIMIT
 			),
 			target.position.y,
 			clampf(
 				float(entry.get("z", target.position.z)),
-				-MOVE_LIMIT,
-				MOVE_LIMIT
+				-MOVE_LIMIT, MOVE_LIMIT
 			)
 		)
 
@@ -631,3 +724,5 @@ func load_positions() -> void:
 
 			if preview != null:
 				preview.position += offset
+
+	ensure_all_ids()
