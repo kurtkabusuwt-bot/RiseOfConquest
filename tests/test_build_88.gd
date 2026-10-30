@@ -20,6 +20,12 @@ class Expansion:
 	func save_expansion(_manual: bool) -> void:
 		pass
 
+class MobileWar:
+	extends War
+	var test_safe := Rect2()
+	func ability_safe_rect() -> Rect2:
+		return test_safe if test_safe.has_area() else super.ability_safe_rect()
+
 var failures := 0
 var checks := 0
 var war: Node
@@ -70,7 +76,7 @@ func run() -> void:
 	var hero_combat := HeroCombat.new()
 	hero_combat.name = "HeroCombat"
 	game.add_child(hero_combat)
-	war = War.new()
+	war = MobileWar.new()
 	game.add_child(war)
 	await process_frame
 	war.set_process(false)
@@ -235,7 +241,108 @@ func run() -> void:
 	war.extra_army = {"assassin": 0, "siege": 0}
 	war.begin_battle()
 	check(not war.fighting and not war.ability_panel.visible, "Rejected battle keeps HUD hidden")
+	await test_mobile_ui(expansion)
 	game.queue_free()
 	await process_frame
 	print("Build 88.1 checks: ", checks, "; failures: ", failures)
 	quit(1 if failures else 0)
+
+func test_mobile_ui(expansion: Node) -> void:
+	var original_parent: Node = war.get_parent()
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(1280, 720)
+	root.add_child(viewport)
+	war.reparent(viewport)
+	expansion.infantry = 10
+	war.primary_commander = "Fatih Sultan Mehmet"
+	war.secondary_commander = "Halid bin Velid"
+	war.extra_army = {"assassin": 1, "siege": 1}
+	# Delete the HUD, then start a real battle: it must be recovered without commander setup.
+	war.ability_canvas.free()
+	war.begin_battle()
+	await process_frame
+	check(war.fighting and war.ability_ui_valid(), "Battle automatically rebuilds missing HUD")
+	var canvas: CanvasLayer = war.ability_canvas
+	var commander_ui: CanvasLayer = war.commander_canvas
+	war.build_ability_ui()
+	war.setup_commanders()
+	war.setup_commanders()
+	check(war.ability_canvas == canvas and war.commander_canvas == commander_ui, "Repeated setup does not duplicate HUD or commander panels")
+	# Reproduce a city/hero overlay that used to be above the commander canvas (65).
+	var blocker_layer := CanvasLayer.new()
+	blocker_layer.layer = 100
+	viewport.add_child(blocker_layer)
+	var blocker := ColorRect.new()
+	blocker_layer.add_child(blocker)
+	blocker.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	blocker.mouse_filter = Control.MOUSE_FILTER_STOP
+	check(war.ability_canvas.layer > blocker_layer.layer, "Ability HUD is above existing modal layers")
+	var stretched := Transform2D(Vector2(2, 0), Vector2(0, 2), Vector2(100, 50))
+	var mapped: Rect2 = war.screen_safe_to_viewport(Rect2(140, 90, 1480, 640), stretched, Rect2(0, 0, 800, 360))
+	check(mapped.is_equal_approx(Rect2(20, 20, 740, 320)), "Physical safe area is converted through stretch and screen offset")
+	check(war.screen_safe_to_viewport(Rect2(5000, 5000, 10, 10), stretched, Rect2(0, 0, 800, 360)) == Rect2(0, 0, 800, 360), "Invalid platform safe area falls back to visible viewport")
+	for dims in [Vector2i(1280, 720), Vector2i(2400, 1080), Vector2i(800, 360), Vector2i(360, 640), Vector2i(320, 180)]:
+		viewport.size = dims
+		war.test_safe = Rect2(Vector2(16, 8), Vector2(dims) - Vector2(32, 16))
+		await process_frame
+		war.update_ability_ui()
+		await process_frame
+		var safe: Rect2 = war.test_safe
+		check(war.ability_panel.is_visible_in_tree(), "HUD visible at %s" % dims)
+		check(safe.encloses(war.ability_panel.get_global_rect()), "Panel inside safe area at %s" % dims)
+		for button in war.ability_buttons:
+			check(safe.encloses(button.get_global_rect()), "Button inside safe area at %s" % dims)
+			check(button.is_visible_in_tree() and not button.disabled, "Ready button enabled and visible at %s" % dims)
+			check(button.mouse_filter == Control.MOUSE_FILTER_STOP, "Button accepts input")
+			check(button.get_global_rect().size.y >= 44.0, "Usable touch height at %s" % dims)
+	# Recover deletion of only part of the HUD; ability state must not be reset.
+	war.cast_ability(0)
+	var cooldown: float = war.abilities.remaining[0]
+	war.ability_panel.free()
+	war.update_ability_ui()
+	await process_frame
+	check(war.ability_ui_valid() and war.ability_panel.is_visible_in_tree(), "Partial HUD destruction recovers during battle")
+	close(war.abilities.remaining[0], cooldown, "HUD rebuild preserves active cooldown")
+	check(war.ability_buttons[0].disabled and not war.ability_buttons[1].disabled, "Rebuild preserves independent button readiness")
+	war.ability_canvas.hide()
+	war.ability_screen.hide()
+	war.update_ability_ui()
+	check(war.ability_panel.is_visible_in_tree(), "Update restores accidentally hidden HUD ancestors")
+	# Use actual viewport GUI hit testing, with the blocking layer still present.
+	war.test_safe = Rect2(Vector2(24, 12), Vector2(752, 336))
+	viewport.size = Vector2i(800, 360)
+	war.update_ability_ui()
+	await process_frame
+	await process_frame
+	var button: Button = war.ability_buttons[1]
+	var point := button.get_global_rect().get_center()
+	var motion := InputEventMouseMotion.new()
+	motion.position = point
+	viewport.push_input(motion, true)
+	for down in [true, false]:
+		var click := InputEventMouseButton.new()
+		click.position = point
+		click.button_index = MOUSE_BUTTON_LEFT
+		click.pressed = down
+		viewport.push_input(click, true)
+	close(war.abilities.remaining[1], 40.0, "Viewport click reaches secondary ability above blocking UI")
+	close(war.abilities.active_time[1], 6.0, "GUI input activates the existing Halid skill")
+	war.reparent(original_parent)
+	war.test_safe = Rect2()
+	war.abilities.reset("Fatih Sultan Mehmet", "Halid bin Velid")
+	war.update_ability_ui()
+	await process_frame
+	await process_frame
+	var touch_point: Vector2 = war.get_viewport().get_screen_transform() * war.ability_buttons[0].get_global_rect().get_center()
+	for down in [true, false]:
+		var touch := InputEventScreenTouch.new()
+		touch.index = 0
+		touch.position = touch_point
+		touch.pressed = down
+		Input.parse_input_event(touch)
+		await process_frame
+	close(war.abilities.remaining[0], 45.0, "Touch with mouse emulation activates primary ability")
+	war.finish_battle()
+	check(not war.ability_panel.is_visible_in_tree(), "Battle end hides reconstructed HUD")
+	viewport.queue_free()
+	await process_frame
