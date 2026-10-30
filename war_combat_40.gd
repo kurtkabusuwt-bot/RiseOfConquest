@@ -232,7 +232,6 @@ func update_unit(
 		speed *= 1.20
 
 	moving = ai.move(unit, target, opponents, allies, delta, order, speed)
-
 	# Movement can change range; never consume a first-hit bonus before a real hit.
 	direction = enemy_root.position - root.position
 	direction.y = 0.0
