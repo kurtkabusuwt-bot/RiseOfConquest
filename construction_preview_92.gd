@@ -1,13 +1,13 @@
 
 extends Node3D
 
-# RISE OF CONQUEST - BUILD 92.6
-# 3D GHOST + PLACEMENT INDICATORS
+# RISE OF CONQUEST - BUILD 92.9
+# SYNCHRONIZED CONSTRUCTION PREVIEW
 # Godot 4.4.1 / Android
 
 const VALID_COLOR := Color(0.12, 0.9, 0.35, 0.42)
-const INVALID_COLOR := Color(1.0, 0.18, 0.16, 0.5)
-const GROUND_HEIGHT := 0.055
+const INVALID_COLOR := Color(1.0, 0.18, 0.16, 0.50)
+const SELECTED_COLOR := Color(0.15, 0.75, 1.0, 0.50)
 
 var game: Node3D
 var ghost_root: Node3D
@@ -29,11 +29,14 @@ func _ready() -> void:
 
 func _initialize() -> void:
 	game = get_parent() as Node3D
+
 	if not is_instance_valid(game):
 		return
 
 	ghost_material = _make_material(VALID_COLOR)
-	guide_material = _make_material(VALID_COLOR)
+	guide_material = _make_material(
+		Color(VALID_COLOR.r, VALID_COLOR.g, VALID_COLOR.b, 0.8)
+	)
 
 	ghost_root = Node3D.new()
 	ghost_root.name = "ConstructionGhost"
@@ -55,7 +58,6 @@ func _make_material(color: Color) -> StandardMaterial3D:
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.cull_mode = BaseMaterial3D.CULL_DISABLED
-	material.no_depth_test = false
 	material.albedo_color = color
 	return material
 
@@ -65,6 +67,10 @@ func _input(event: InputEvent) -> void:
 
 	if not bool(game.get("placing")):
 		return
+
+	if game.has_method("get_construction_pending"):
+		if bool(game.call("get_construction_pending")):
+			return
 
 	if event is InputEventScreenTouch:
 		if event.pressed:
@@ -93,11 +99,7 @@ func _process(_delta: float) -> void:
 	var placing := bool(game.get("placing"))
 
 	if not placing:
-		ghost_root.visible = false
-		was_placing = false
-		has_pointer = false
-		touch_active = false
-		last_kind = ""
+		_reset_preview()
 		return
 
 	if bool(game.get("world_mode")):
@@ -108,7 +110,11 @@ func _process(_delta: float) -> void:
 		ghost_root.visible = false
 		return
 
-	var camera: Camera3D = game.get("camera") as Camera3D
+	if bool(game.get("ruler_mode")):
+		ghost_root.visible = false
+		return
+
+	var camera := game.get("camera") as Camera3D
 
 	if not is_instance_valid(camera):
 		ghost_root.visible = false
@@ -117,9 +123,7 @@ func _process(_delta: float) -> void:
 	if not was_placing:
 		was_placing = true
 		has_pointer = false
-		last_pointer = (
-			get_viewport().get_visible_rect().size * 0.5
-		)
+		last_pointer = get_viewport().get_visible_rect().size * 0.5
 
 	var kind := str(game.get("selected_building"))
 
@@ -127,10 +131,24 @@ func _process(_delta: float) -> void:
 		last_kind = kind
 		_build_ghost(kind)
 
+	var pending := false
+
+	if game.has_method("get_construction_pending"):
+		pending = bool(game.call("get_construction_pending"))
+
+	if pending:
+		var selected_position := Vector3.ZERO
+
+		if game.has_method("get_construction_position"):
+			selected_position = game.call("get_construction_position")
+
+		ghost_root.global_position = selected_position
+		ghost_root.visible = true
+		_set_color(SELECTED_COLOR)
+		return
+
 	if not has_pointer:
-		last_pointer = (
-			get_viewport().get_visible_rect().size * 0.5
-		)
+		last_pointer = get_viewport().get_visible_rect().size * 0.5
 
 	var origin := camera.project_ray_origin(last_pointer)
 	var direction := camera.project_ray_normal(last_pointer)
@@ -163,17 +181,25 @@ func _process(_delta: float) -> void:
 			game.call("construction_check", kind, target)
 		)
 
-	var color := VALID_COLOR
-	if not problem.is_empty():
-		color = INVALID_COLOR
+	if problem.is_empty():
+		_set_color(VALID_COLOR)
+	else:
+		_set_color(INVALID_COLOR)
 
+func _reset_preview() -> void:
+	ghost_root.visible = false
+	was_placing = false
+	has_pointer = false
+	touch_active = false
+	last_kind = ""
+
+func _set_color(color: Color) -> void:
 	ghost_material.albedo_color = color
-
 	guide_material.albedo_color = Color(
 		color.r,
 		color.g,
 		color.b,
-		0.8
+		0.85
 	)
 
 func _clear_root(root: Node3D) -> void:
@@ -197,6 +223,7 @@ func _add_box(
 	part.mesh = mesh
 	part.material_override = material
 	part.position = offset
+
 	root.add_child(part)
 
 func _add_cylinder(
@@ -216,6 +243,7 @@ func _add_cylinder(
 	part.mesh = mesh
 	part.material_override = ghost_material
 	part.position = offset
+
 	model_root.add_child(part)
 
 func _footprint(kind: String) -> Vector2:
@@ -243,40 +271,29 @@ func _build_guides(kind: String) -> void:
 	var size := _footprint(kind)
 	var half_x := size.x * 0.5
 	var half_z := size.y * 0.5
-	var line_width := 0.12
 
-	# Four edges around the building footprint.
 	for side in [-1.0, 1.0]:
 		_add_box(
 			guide_root,
 			"EdgeX",
-			Vector3(size.x, 0.06, line_width),
-			Vector3(
-				0.0,
-				GROUND_HEIGHT,
-				side * half_z
-			),
+			Vector3(size.x, 0.06, 0.12),
+			Vector3(0, 0.055, side * half_z),
 			guide_material
 		)
 
 		_add_box(
 			guide_root,
 			"EdgeZ",
-			Vector3(line_width, 0.06, size.y),
-			Vector3(
-				side * half_x,
-				GROUND_HEIGHT,
-				0.0
-			),
+			Vector3(0.12, 0.06, size.y),
+			Vector3(side * half_x, 0.055, 0),
 			guide_material
 		)
 
-	# Ground cross marks the placement center.
 	_add_box(
 		guide_root,
 		"CenterX",
 		Vector3(1.0, 0.065, 0.1),
-		Vector3(0.0, GROUND_HEIGHT + 0.015, 0.0),
+		Vector3(0, 0.07, 0),
 		guide_material
 	)
 
@@ -284,7 +301,7 @@ func _build_guides(kind: String) -> void:
 		guide_root,
 		"CenterZ",
 		Vector3(0.1, 0.065, 1.0),
-		Vector3(0.0, GROUND_HEIGHT + 0.015, 0.0),
+		Vector3(0, 0.07, 0),
 		guide_material
 	)
 
