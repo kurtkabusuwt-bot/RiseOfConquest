@@ -1,13 +1,15 @@
 
 extends CanvasLayer
 
-# RISE OF CONQUEST - BUILD 91.9
-# CITY AND CONSTRUCTION NAVIGATION
+# RISE OF CONQUEST - BUILD 92.8
+# MOBILE MENU + CONSTRUCTION CONFIRMATION
 # Godot 4.4.1 / Android
 
 const GOLD := Color(0.91, 0.72, 0.39)
 const DARK := Color(0.035, 0.065, 0.105, 0.96)
 const BUTTON_BG := Color(0.12, 0.19, 0.27, 0.97)
+const GREEN := Color(0.10, 0.40, 0.24, 0.98)
+const RED := Color(0.43, 0.13, 0.15, 0.98)
 
 var game: Node
 var manager: Node
@@ -16,6 +18,9 @@ var bottom_bar: PanelContainer
 var action_panel: PanelContainer
 var action_title: Label
 var action_list: VBoxContainer
+var confirm_bar: PanelContainer
+var confirm_button: Button
+var confirm_hint: Label
 var current_tab := ""
 
 func _ready() -> void:
@@ -23,13 +28,43 @@ func _ready() -> void:
 	call_deferred("_initialize")
 
 func _initialize() -> void:
-	game = get_tree().current_scene
-
-	if game == null:
+	game = get_parent()
+	if not is_instance_valid(game):
 		return
 
 	manager = game.get_node_or_null("MobileUIManager90")
 	_build_interface()
+	set_process(true)
+
+func _process(_delta: float) -> void:
+	if not is_instance_valid(game):
+		return
+
+	if not is_instance_valid(confirm_bar):
+		return
+
+	var placing := bool(game.get("placing"))
+	var world := bool(game.get("world_mode"))
+	var battle := bool(game.get("battle_active"))
+	var ruler := bool(game.get("ruler_mode"))
+
+	var show_controls := placing and not world and not battle and not ruler
+
+	confirm_bar.visible = show_controls
+
+	if not show_controls:
+		return
+
+	var pending := false
+	if game.has_method("get_construction_pending"):
+		pending = bool(game.call("get_construction_pending"))
+
+	confirm_button.disabled = not pending
+
+	if pending:
+		confirm_hint.text = "Konum hazir - insaati onaylayin"
+	else:
+		confirm_hint.text = "Haritada bir bina konumu secin"
 
 func _make_style(bg: Color) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
@@ -40,12 +75,17 @@ func _make_style(bg: Color) -> StyleBoxFlat:
 	style.set_content_margin_all(8)
 	return style
 
-func _make_button(caption: String, action: Callable) -> Button:
+func _make_button(
+	caption: String,
+	action: Callable,
+	bg: Color = BUTTON_BG
+) -> Button:
 	var button := Button.new()
 	button.text = caption
 	button.custom_minimum_size = Vector2(112, 50)
+
 	button.add_theme_stylebox_override(
-		"normal", _make_style(BUTTON_BG)
+		"normal", _make_style(bg)
 	)
 	button.add_theme_stylebox_override(
 		"pressed", _make_style(Color(0.25, 0.34, 0.42))
@@ -62,6 +102,7 @@ func _build_interface() -> void:
 	add_child(root)
 
 	_build_bottom_bar()
+	_build_confirm_bar()
 	_build_action_panel()
 
 func _build_bottom_bar() -> void:
@@ -90,13 +131,70 @@ func _build_bottom_bar() -> void:
 			_make_button(tab, _open_tab.bind(tab))
 		)
 
+func _build_confirm_bar() -> void:
+	confirm_bar = PanelContainer.new()
+	confirm_bar.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	confirm_bar.offset_left = 8
+	confirm_bar.offset_right = -8
+	confirm_bar.offset_top = -165
+	confirm_bar.offset_bottom = -88
+	confirm_bar.add_theme_stylebox_override(
+		"panel", _make_style(DARK)
+	)
+	root.add_child(confirm_bar)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	confirm_bar.add_child(row)
+
+	confirm_hint = Label.new()
+	confirm_hint.text = "Haritada bir bina konumu secin"
+	confirm_hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	confirm_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	confirm_hint.add_theme_color_override("font_color", GOLD)
+	confirm_hint.add_theme_font_size_override("font_size", 13)
+	row.add_child(confirm_hint)
+
+	confirm_button = _make_button(
+		"INSA ET",
+		_confirm_construction,
+		GREEN
+	)
+	confirm_button.custom_minimum_size = Vector2(100, 50)
+	confirm_button.disabled = true
+	row.add_child(confirm_button)
+
+	var cancel_button := _make_button(
+		"IPTAL",
+		_reject_construction,
+		RED
+	)
+	cancel_button.custom_minimum_size = Vector2(90, 50)
+	row.add_child(cancel_button)
+
+	confirm_bar.visible = false
+
+func _confirm_construction() -> void:
+	if not is_instance_valid(game):
+		return
+
+	if game.has_method("confirm_construction"):
+		game.call("confirm_construction")
+
+func _reject_construction() -> void:
+	if not is_instance_valid(game):
+		return
+
+	if game.has_method("reject_construction"):
+		game.call("reject_construction")
+
 func _build_action_panel() -> void:
 	action_panel = PanelContainer.new()
 	action_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
 	action_panel.offset_left = 12
 	action_panel.offset_right = -12
 	action_panel.offset_top = 100
-	action_panel.offset_bottom = -95
+	action_panel.offset_bottom = -175
 	action_panel.add_theme_stylebox_override(
 		"panel", _make_style(DARK)
 	)
@@ -148,8 +246,7 @@ func _add_action(
 ) -> void:
 	var action := func() -> void:
 		_close_panel()
-
-		if game != null and game.has_method(method):
+		if is_instance_valid(game) and game.has_method(method):
 			game.callv(method, args)
 		else:
 			push_warning("Eksik oyun fonksiyonu: " + method)
@@ -162,7 +259,6 @@ func _add_manager_action(
 ) -> void:
 	var action := func() -> void:
 		_close_panel()
-
 		if is_instance_valid(manager) and manager.has_method(method):
 			manager.call(method)
 		else:
@@ -174,7 +270,6 @@ func _toggle_building_names() -> void:
 	_close_panel()
 
 	var interaction := game.get_node_or_null("CityInteraction")
-
 	if interaction == null:
 		return
 
@@ -182,7 +277,6 @@ func _toggle_building_names() -> void:
 	interaction.set("names_enabled", enabled)
 
 	var old_button: Variant = interaction.get("names_button")
-
 	if old_button is Button:
 		old_button.set_pressed_no_signal(enabled)
 
@@ -191,17 +285,13 @@ func _toggle_building_names() -> void:
 
 func _open_commanders() -> void:
 	_close_panel()
-
 	var war := game.get_node_or_null("WarConquest31")
-
 	if war != null and war.has_method("toggle_commander_panel"):
 		war.toggle_commander_panel()
 
 func _open_war_management() -> void:
 	_close_panel()
-
 	var war := game.get_node_or_null("WarConquest31")
-
 	if war != null and war.has_method("toggle_panel"):
 		war.toggle_panel()
 
@@ -245,14 +335,15 @@ func _open_tab(tab: String) -> void:
 			_add_section("YERLESTIRME")
 			var hint := Label.new()
 			hint.text = (
-				"Mevcut binayi tasimak icin "
-				"uzerine basili tutup surukleyin."
+				"Yeni bina icin haritada konum secin, "
+				"ardindan INSA ET dugmesine basin. "
+				"Mevcut binalari basili tutup tasiyabilirsiniz."
 			)
 			hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			action_list.add_child(hint)
 
 			_add_action(
-				"YERLESTIRMEYI IPTAL ET",
+				"YERLESTIRME MODUNDAN CIK",
 				"cancel_placement"
 			)
 
@@ -297,5 +388,4 @@ func _open_tab(tab: String) -> void:
 func _close_panel() -> void:
 	if action_panel != null:
 		action_panel.visible = false
-
 	current_tab = ""
