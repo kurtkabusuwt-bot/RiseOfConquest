@@ -1,16 +1,21 @@
 
 extends Node3D
 
-# RISE OF CONQUEST - BUILD 92.5
-# 3D CONSTRUCTION GHOST SYSTEM
+# RISE OF CONQUEST - BUILD 92.6
+# 3D GHOST + PLACEMENT INDICATORS
 # Godot 4.4.1 / Android
 
-const VALID_COLOR := Color(0.12, 0.9, 0.35, 0.4)
-const INVALID_COLOR := Color(1.0, 0.18, 0.16, 0.48)
+const VALID_COLOR := Color(0.12, 0.9, 0.35, 0.42)
+const INVALID_COLOR := Color(1.0, 0.18, 0.16, 0.5)
+const GROUND_HEIGHT := 0.055
 
 var game: Node3D
 var ghost_root: Node3D
+var model_root: Node3D
+var guide_root: Node3D
+
 var ghost_material: StandardMaterial3D
+var guide_material: StandardMaterial3D
 
 var last_pointer := Vector2.ZERO
 var has_pointer := false
@@ -27,18 +32,32 @@ func _initialize() -> void:
 	if not is_instance_valid(game):
 		return
 
-	ghost_material = StandardMaterial3D.new()
-	ghost_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	ghost_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	ghost_material.cull_mode = BaseMaterial3D.CULL_DISABLED
-	ghost_material.albedo_color = VALID_COLOR
+	ghost_material = _make_material(VALID_COLOR)
+	guide_material = _make_material(VALID_COLOR)
 
 	ghost_root = Node3D.new()
 	ghost_root.name = "ConstructionGhost"
 	add_child(ghost_root)
-	ghost_root.visible = false
 
+	model_root = Node3D.new()
+	model_root.name = "BuildingModel"
+	ghost_root.add_child(model_root)
+
+	guide_root = Node3D.new()
+	guide_root.name = "PlacementGuides"
+	ghost_root.add_child(guide_root)
+
+	ghost_root.visible = false
 	set_process(true)
+
+func _make_material(color: Color) -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	material.no_depth_test = false
+	material.albedo_color = color
+	return material
 
 func _input(event: InputEvent) -> void:
 	if not is_instance_valid(game):
@@ -81,7 +100,11 @@ func _process(_delta: float) -> void:
 		last_kind = ""
 		return
 
-	if bool(game.get("world_mode")) or bool(game.get("battle_active")):
+	if bool(game.get("world_mode")):
+		ghost_root.visible = false
+		return
+
+	if bool(game.get("battle_active")):
 		ghost_root.visible = false
 		return
 
@@ -94,7 +117,9 @@ func _process(_delta: float) -> void:
 	if not was_placing:
 		was_placing = true
 		has_pointer = false
-		last_pointer = get_viewport().get_visible_rect().size * 0.5
+		last_pointer = (
+			get_viewport().get_visible_rect().size * 0.5
+		)
 
 	var kind := str(game.get("selected_building"))
 
@@ -103,7 +128,9 @@ func _process(_delta: float) -> void:
 		_build_ghost(kind)
 
 	if not has_pointer:
-		last_pointer = get_viewport().get_visible_rect().size * 0.5
+		last_pointer = (
+			get_viewport().get_visible_rect().size * 0.5
+		)
 
 	var origin := camera.project_ray_origin(last_pointer)
 	var direction := camera.project_ray_normal(last_pointer)
@@ -136,19 +163,30 @@ func _process(_delta: float) -> void:
 			game.call("construction_check", kind, target)
 		)
 
-	ghost_material.albedo_color = (
-		VALID_COLOR if problem.is_empty() else INVALID_COLOR
+	var color := VALID_COLOR
+	if not problem.is_empty():
+		color = INVALID_COLOR
+
+	ghost_material.albedo_color = color
+
+	guide_material.albedo_color = Color(
+		color.r,
+		color.g,
+		color.b,
+		0.8
 	)
 
-func _clear_ghost() -> void:
-	for child in ghost_root.get_children():
-		ghost_root.remove_child(child)
+func _clear_root(root: Node3D) -> void:
+	for child in root.get_children():
+		root.remove_child(child)
 		child.queue_free()
 
 func _add_box(
+	root: Node3D,
 	part_name: String,
 	size: Vector3,
-	offset: Vector3
+	offset: Vector3,
+	material: Material
 ) -> void:
 	var part := MeshInstance3D.new()
 	part.name = part_name
@@ -157,9 +195,9 @@ func _add_box(
 	mesh.size = size
 
 	part.mesh = mesh
-	part.material_override = ghost_material
+	part.material_override = material
 	part.position = offset
-	ghost_root.add_child(part)
+	root.add_child(part)
 
 func _add_cylinder(
 	part_name: String,
@@ -178,14 +216,98 @@ func _add_cylinder(
 	part.mesh = mesh
 	part.material_override = ghost_material
 	part.position = offset
-	ghost_root.add_child(part)
+	model_root.add_child(part)
+
+func _footprint(kind: String) -> Vector2:
+	match kind:
+		"Merkez":
+			return Vector2(6.0, 6.0)
+		"Kışla":
+			return Vector2(4.8, 4.1)
+		"Çiftlik":
+			return Vector2(3.7, 3.7)
+		"Kereste":
+			return Vector2(3.6, 3.2)
+		"Taşocağı":
+			return Vector2(3.7, 3.7)
+		"Kule":
+			return Vector2(3.3, 3.3)
+		"Ev":
+			return Vector2(3.7, 3.7)
+		_:
+			return Vector2(4.0, 4.0)
+
+func _build_guides(kind: String) -> void:
+	_clear_root(guide_root)
+
+	var size := _footprint(kind)
+	var half_x := size.x * 0.5
+	var half_z := size.y * 0.5
+	var line_width := 0.12
+
+	# Four edges around the building footprint.
+	for side in [-1.0, 1.0]:
+		_add_box(
+			guide_root,
+			"EdgeX",
+			Vector3(size.x, 0.06, line_width),
+			Vector3(
+				0.0,
+				GROUND_HEIGHT,
+				side * half_z
+			),
+			guide_material
+		)
+
+		_add_box(
+			guide_root,
+			"EdgeZ",
+			Vector3(line_width, 0.06, size.y),
+			Vector3(
+				side * half_x,
+				GROUND_HEIGHT,
+				0.0
+			),
+			guide_material
+		)
+
+	# Ground cross marks the placement center.
+	_add_box(
+		guide_root,
+		"CenterX",
+		Vector3(1.0, 0.065, 0.1),
+		Vector3(0.0, GROUND_HEIGHT + 0.015, 0.0),
+		guide_material
+	)
+
+	_add_box(
+		guide_root,
+		"CenterZ",
+		Vector3(0.1, 0.065, 1.0),
+		Vector3(0.0, GROUND_HEIGHT + 0.015, 0.0),
+		guide_material
+	)
+
+func _model_box(
+	part_name: String,
+	size: Vector3,
+	offset: Vector3
+) -> void:
+	_add_box(
+		model_root,
+		part_name,
+		size,
+		offset,
+		ghost_material
+	)
 
 func _build_ghost(kind: String) -> void:
-	_clear_ghost()
+	_clear_root(model_root)
+	_build_guides(kind)
 
 	match kind:
 		"Merkez":
-			_add_box(
+			_model_box(
 				"PalaceBase",
 				Vector3(5.5, 3.0, 5.5),
 				Vector3(0, 1.5, 0)
@@ -203,24 +325,24 @@ func _build_ghost(kind: String) -> void:
 				)
 
 		"Kışla":
-			_add_box(
+			_model_box(
 				"Barracks",
 				Vector3(4.2, 2.4, 3.5),
 				Vector3(0, 1.2, 0)
 			)
-			_add_box(
+			_model_box(
 				"Roof",
 				Vector3(4.7, 0.55, 4.0),
 				Vector3(0, 2.65, 0)
 			)
 
 		"Ev":
-			_add_box(
+			_model_box(
 				"House",
 				Vector3(3.0, 2.4, 3.0),
 				Vector3(0, 1.2, 0)
 			)
-			_add_box(
+			_model_box(
 				"Roof",
 				Vector3(3.4, 0.65, 3.4),
 				Vector3(0, 2.7, 0)
@@ -239,45 +361,45 @@ func _build_ghost(kind: String) -> void:
 			)
 
 		"Çiftlik":
-			_add_box(
+			_model_box(
 				"Field",
 				Vector3(3.5, 0.15, 3.5),
 				Vector3(0, 0.1, 0)
 			)
 			for i in range(4):
-				_add_box(
+				_model_box(
 					"Crops",
 					Vector3(0.3, 0.55, 2.7),
 					Vector3(-1.1 + i * 0.7, 0.38, 0)
 				)
 
 		"Kereste":
-			_add_box(
+			_model_box(
 				"Workshop",
 				Vector3(3.0, 1.8, 2.5),
 				Vector3(0, 0.9, 0)
 			)
-			_add_box(
+			_model_box(
 				"Roof",
 				Vector3(3.4, 0.4, 2.9),
 				Vector3(0, 2.0, 0)
 			)
 
 		"Taşocağı":
-			_add_box(
+			_model_box(
 				"StoneBase",
 				Vector3(3.5, 0.35, 3.5),
 				Vector3(0, 0.18, 0)
 			)
 			for i in range(3):
-				_add_box(
+				_model_box(
 					"Stone",
 					Vector3(0.9, 0.9, 0.9),
 					Vector3(-1.0 + i, 0.65, 0)
 				)
 
 		_:
-			_add_box(
+			_model_box(
 				"Default",
 				Vector3(4.0, 2.0, 4.0),
 				Vector3(0, 1.0, 0)
