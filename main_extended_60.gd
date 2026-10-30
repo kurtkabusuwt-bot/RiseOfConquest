@@ -1,8 +1,8 @@
 
 extends "res://main.gd"
 
-# RISE OF CONQUEST - BUILD 93.6
-# CONSTRUCTION + SAVE SYSTEM REPAIR
+# RISE OF CONQUEST - BUILD 93.8
+# SAFE LOAD + AUTOMATIC CONSTRUCTION SAVE
 # Godot 4.4.1 / Android
 
 const BUILD_LIMIT_61 := 47.0
@@ -38,6 +38,39 @@ func zoom_camera(delta: float) -> void:
 
 	update_camera()
 
+func _kind_from_name(node_name: String) -> String:
+	for kind in BUILDING_SPACING.keys():
+		if node_name == kind:
+			return kind
+
+		if node_name.begins_with("@" + kind + "@"):
+			return kind
+
+		if node_name.begins_with(kind):
+			var suffix := node_name.substr(
+				kind.length()
+			)
+
+			if suffix.is_valid_int():
+				return kind
+
+	return ""
+
+func _all_buildings() -> Array[Node3D]:
+	var result: Array[Node3D] = []
+
+	# Works even before CityInteraction initializes.
+	for child in get_children():
+		if child is Node3D:
+			var building := child as Node3D
+
+			if _kind_from_name(
+				str(building.name)
+			) != "":
+				result.append(building)
+
+	return result
+
 func construction_spacing(
 	kind_a: String,
 	kind_b: String
@@ -57,20 +90,12 @@ func construction_check(
 	if absf(position.z) > BUILD_LIMIT_61:
 		return "Sehir siniri disinda."
 
-	var interaction := get_node_or_null("CityInteraction")
+	if not BUILDING_SPACING.has(kind):
+		return "Gecersiz bina turu."
 
-	if interaction == null:
-		return "Bina kontrol sistemi hazir degil."
-
-	if not interaction.has_method("get_buildings"):
-		return "Bina kontrol sistemi hazir degil."
-
-	for building in interaction.get_buildings():
-		if not is_instance_valid(building):
-			continue
-
-		var other_kind := str(
-			interaction.building_kind(building)
+	for building in _all_buildings():
+		var other_kind := _kind_from_name(
+			str(building.name)
 		)
 
 		var spacing := construction_spacing(
@@ -113,8 +138,12 @@ func _screen_to_ground(
 	if not is_instance_valid(camera):
 		return Vector3.INF
 
-	var origin := camera.project_ray_origin(screen_pos)
-	var direction := camera.project_ray_normal(screen_pos)
+	var origin := camera.project_ray_origin(
+		screen_pos
+	)
+	var direction := camera.project_ray_normal(
+		screen_pos
+	)
 
 	if absf(direction.y) < 0.0001:
 		return Vector3.INF
@@ -132,13 +161,17 @@ func _screen_to_ground(
 		float(roundi(hit.z))
 	)
 
-func handle_ground_tap(screen_pos: Vector2) -> void:
+func handle_ground_tap(
+	screen_pos: Vector2
+) -> void:
 	if not placing or world_mode or ruler_mode or battle_active:
 		clear_construction_pending()
 		super.handle_ground_tap(screen_pos)
 		return
 
-	var position := _screen_to_ground(screen_pos)
+	var position := _screen_to_ground(
+		screen_pos
+	)
 
 	if not position.is_finite():
 		return
@@ -163,7 +196,9 @@ func handle_ground_tap(screen_pos: Vector2) -> void:
 	)
 	update_ui()
 
-func _construction_cost_problem(kind: String) -> String:
+func _construction_cost_problem(
+	kind: String
+) -> String:
 	match kind:
 		"Ev":
 			if woods < 100:
@@ -188,7 +223,9 @@ func _construction_cost_problem(kind: String) -> String:
 
 	return ""
 
-func _pay_construction_cost(kind: String) -> void:
+func _pay_construction_cost(
+	kind: String
+) -> void:
 	match kind:
 		"Ev":
 			woods -= 100
@@ -215,111 +252,127 @@ func _building_id_exists(
 	id: String,
 	excluded: Node3D = null
 ) -> bool:
-	var interaction := get_node_or_null("CityInteraction")
-
-	if interaction == null:
-		return false
-
-	if not interaction.has_method("get_buildings"):
-		return false
-
-	for building in interaction.get_buildings():
-		if not is_instance_valid(building):
-			continue
-
+	for building in _all_buildings():
 		if building == excluded:
 			continue
 
-		if str(building.get_meta("building_id", "")) == id:
+		if str(building.get_meta(
+			"building_id", ""
+		)) == id:
 			return true
 
 	return false
 
-func ensure_building_id(building: Node3D) -> String:
+func ensure_building_id(
+	building: Node3D
+) -> String:
 	if not is_instance_valid(building):
 		return ""
 
 	var existing := str(
-		building.get_meta("building_id", "")
+		building.get_meta(
+			"building_id", ""
+		)
 	)
 
 	if not existing.is_empty():
-		if not _building_id_exists(existing, building):
+		if not _building_id_exists(
+			existing, building
+		):
 			return existing
 
 	var new_id := _next_building_id()
 
-	while _building_id_exists(new_id, building):
+	while _building_id_exists(
+		new_id, building
+	):
 		new_id = _next_building_id()
 
-	building.set_meta("building_id", new_id)
+	building.set_meta(
+		"building_id", new_id
+	)
+
 	return new_id
 
 func ensure_all_building_ids() -> void:
-	var interaction := get_node_or_null("CityInteraction")
-
-	if interaction == null:
-		return
-
-	if not interaction.has_method("get_buildings"):
-		return
-
-	for building in interaction.get_buildings():
-		if is_instance_valid(building):
-			ensure_building_id(building)
+	for building in _all_buildings():
+		ensure_building_id(building)
 
 func _find_building_at(
 	kind: String,
 	position: Vector3
 ) -> Node3D:
-	var interaction := get_node_or_null("CityInteraction")
-
-	if interaction == null:
-		return null
-
-	if not interaction.has_method("get_buildings"):
-		return null
-
-	var buildings: Array = interaction.get_buildings()
-
-	# Search backwards to prefer the latest created building.
+	var buildings := _all_buildings()
 	buildings.reverse()
 
 	for building in buildings:
-		if not is_instance_valid(building):
+		if _kind_from_name(
+			str(building.name)
+		) != kind:
 			continue
 
-		if str(interaction.building_kind(building)) != kind:
-			continue
-
-		if building.global_position.distance_to(position) < 0.1:
+		if building.position.distance_to(
+			position
+		) < 0.1:
 			return building
 
 	return null
 
 func _sync_occupied_cells() -> void:
-	var interaction := get_node_or_null("CityInteraction")
-
-	if interaction == null:
-		return
-
-	if not interaction.has_method("get_buildings"):
-		return
-
 	occupied.clear()
 
-	for building in interaction.get_buildings():
-		if not is_instance_valid(building):
-			continue
-
-		var position := building.global_position
-
+	for building in _all_buildings():
 		occupied.append(
 			Vector2i(
-				roundi(position.x),
-				roundi(position.z)
+				roundi(
+					building.position.x
+				),
+				roundi(
+					building.position.z
+				)
 			)
 		)
+
+func _rebuild_saved_buildings() -> void:
+	var entries: Array[Dictionary] = []
+
+	for building in _all_buildings():
+		var kind := _kind_from_name(
+			str(building.name)
+		)
+
+		if kind == "Merkez":
+			continue
+
+		entries.append({
+			"id": ensure_building_id(building),
+			"kind": kind,
+			"x": roundi(building.position.x),
+			"z": roundi(building.position.z)
+		})
+
+	buildings_saved = entries
+
+func _save_city_state() -> void:
+	ensure_all_building_ids()
+	_sync_occupied_cells()
+	_rebuild_saved_buildings()
+
+	# Save the main game state first.
+	save_game(false)
+
+	# Save the supplementary city layout.
+	var interaction := get_node_or_null(
+		"CityInteraction"
+	)
+
+	if interaction != null:
+		if interaction.has_method(
+			"save_positions"
+		):
+			interaction.call(
+				"save_positions"
+			)
 
 func confirm_construction() -> void:
 	if not construction_pending:
@@ -340,7 +393,9 @@ func confirm_construction() -> void:
 	var position := construction_position
 	var kind := construction_kind
 
-	var problem := construction_check(kind, position)
+	var problem := construction_check(
+		kind, position
+	)
 
 	if not problem.is_empty():
 		clear_construction_pending()
@@ -348,7 +403,9 @@ func confirm_construction() -> void:
 		update_ui()
 		return
 
-	var cost_problem := _construction_cost_problem(kind)
+	var cost_problem := _construction_cost_problem(
+		kind
+	)
 
 	if not cost_problem.is_empty():
 		status = cost_problem
@@ -358,24 +415,15 @@ func confirm_construction() -> void:
 	_pay_construction_cost(kind)
 	create_building(kind, position)
 
-	var building := _find_building_at(kind, position)
-	var new_id := ""
+	var building := _find_building_at(
+		kind, position
+	)
 
 	if is_instance_valid(building):
-		new_id = ensure_building_id(building)
+		ensure_building_id(building)
 
-	buildings_saved.append({
-		"id": new_id,
-		"kind": kind,
-		"x": int(position.x),
-		"z": int(position.z)
-	})
-
-	ensure_all_building_ids()
-	_sync_occupied_cells()
 	clear_construction_pending()
-
-	save_game(false)
+	_save_city_state()
 
 	status = "%s insa edildi!" % kind
 	update_ui()
@@ -385,13 +433,18 @@ func reject_construction() -> void:
 	status = "Bina konumu secimi iptal edildi."
 	update_ui()
 
-# BUILD 93.6 - RESTORE EXTENDED CITY
+# BUILD 93.8 - SAFE GAME LOADING
 
 func load_game() -> void:
-	if not FileAccess.file_exists(SAVE_PATH):
+	if not FileAccess.file_exists(
+		SAVE_PATH
+	):
 		return
 
-	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	var file := FileAccess.open(
+		SAVE_PATH,
+		FileAccess.READ
+	)
 
 	if file == null:
 		return
@@ -411,68 +464,120 @@ func load_game() -> void:
 	stones = int(data.get("stones", stones))
 	foods = int(data.get("foods", foods))
 
-	var entries: Variant = data.get("buildings", [])
+	var entries: Variant = data.get(
+		"buildings", []
+	)
+
+	var loaded_ids: Dictionary = {}
+	var loaded_positions: Dictionary = {}
 
 	if entries is Array:
 		for entry in entries:
 			if not (entry is Dictionary):
 				continue
 
-			var kind := str(entry.get("kind", ""))
+			var kind := str(
+				entry.get("kind", "")
+			)
 
 			if kind not in [
 				"Ev", "Kule", "Kışla",
-				"Çiftlik", "Kereste", "Taşocağı"
+				"Çiftlik", "Kereste",
+				"Taşocağı"
 			]:
 				continue
 
-			var x := int(entry.get("x", 0))
-			var z := int(entry.get("z", 0))
+			var x := int(
+				entry.get("x", 0)
+			)
+			var z := int(
+				entry.get("z", 0)
+			)
 
-			if absi(x) > 47 or absi(z) > 47:
+			if absi(x) > 47:
 				continue
 
-			var position := Vector3(x, 0, z)
+			if absi(z) > 47:
+				continue
 
-			create_building(kind, position)
+			var position := Vector3(
+				x, 0, z
+			)
+
+			var saved_id := str(
+				entry.get("id", "")
+			)
+
+			# Do not load the same ID twice.
+			if not saved_id.is_empty():
+				if loaded_ids.has(saved_id):
+					continue
+
+			# Do not create duplicate buildings
+			# at identical positions.
+			var position_key := (
+				str(x) + ":" + str(z)
+			)
+
+			if loaded_positions.has(
+				position_key
+			):
+				continue
+
+			var existing := _find_building_at(
+				kind, position
+			)
+
+			if existing != null:
+				continue
+
+			create_building(
+				kind, position
+			)
 
 			var building := _find_building_at(
 				kind, position
 			)
 
-			var saved_id := str(entry.get("id", ""))
+			if building == null:
+				continue
 
-			if is_instance_valid(building):
-				if not saved_id.is_empty():
-					if not _building_id_exists(
-						saved_id, building
-					):
-						building.set_meta(
-							"building_id", saved_id
-						)
-					else:
-						saved_id = ""
-				
-				if saved_id.is_empty():
-					saved_id = ensure_building_id(
-						building
+			if not saved_id.is_empty():
+				if not _building_id_exists(
+					saved_id, building
+				):
+					building.set_meta(
+						"building_id",
+						saved_id
 					)
 
+			var final_id := ensure_building_id(
+				building
+			)
+
+			loaded_ids[final_id] = true
+			loaded_positions[position_key] = true
+
 			buildings_saved.append({
-				"id": saved_id,
+				"id": final_id,
 				"kind": kind,
 				"x": x,
 				"z": z
 			})
 
 	ruler.position.x = clampf(
-		float(data.get("ruler_x", 3.0)),
+		float(data.get(
+			"ruler_x", 3.0
+		)),
 		-14.0, 14.0
 	)
 
 	ruler.position.z = clampf(
-		float(data.get("ruler_z", 4.0)),
+		float(data.get(
+			"ruler_z", 4.0
+		)),
 		-14.0, 14.0
 	)
 
+	_sync_occupied_cells()
 	status = "Kayitli sehrin yuklendi."
