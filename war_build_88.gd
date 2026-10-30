@@ -1,8 +1,9 @@
 
 extends "res://war_conquest_70.gd"
 
-# RISE OF CONQUEST - BUILD 91.7
+# RISE OF CONQUEST - BUILD 94.6
 # COMMANDER ABILITIES AND RESPONSIVE HUD
+# GAMEPLAY TEST TEXT FIX
 # Godot 4.4.1 / Android
 
 const HeroAbilities = preload("res://hero_abilities.gd")
@@ -102,12 +103,16 @@ func build_ability_ui() -> bool:
 	ability_screen.set_anchors_and_offsets_preset(
 		Control.PRESET_FULL_RECT
 	)
-	ability_screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ability_screen.mouse_filter = (
+		Control.MOUSE_FILTER_IGNORE
+	)
 
 	ability_panel = PanelContainer.new()
 	ability_panel.name = "AbilityPanel"
 	ability_screen.add_child(ability_panel)
-	ability_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	ability_panel.mouse_filter = (
+		Control.MOUSE_FILTER_STOP
+	)
 
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.035, 0.055, 0.09, 0.96)
@@ -115,7 +120,10 @@ func build_ability_ui() -> bool:
 	style.set_border_width_all(2)
 	style.set_content_margin_all(8)
 	style.set_corner_radius_all(12)
-	ability_panel.add_theme_stylebox_override("panel", style)
+
+	ability_panel.add_theme_stylebox_override(
+		"panel", style
+	)
 
 	ability_content = VBoxContainer.new()
 	ability_content.add_theme_constant_override(
@@ -124,7 +132,7 @@ func build_ability_ui() -> bool:
 	ability_panel.add_child(ability_content)
 
 	ability_feedback = Label.new()
-	ability_feedback.text = "KOMUTAN YETENEKLERI"
+	ability_feedback.text = "KOMUTAN YETENEKLERİ"
 	ability_feedback.add_theme_font_size_override(
 		"font_size", 16
 	)
@@ -136,12 +144,16 @@ func build_ability_ui() -> bool:
 	for slot in range(2):
 		var button := Button.new()
 		button.name = "CommanderAbility%d" % slot
-		button.custom_minimum_size = Vector2(286, 64)
+		button.custom_minimum_size = (
+			Vector2(286, 64)
+		)
 		button.add_theme_font_size_override(
 			"font_size", 16
 		)
 		button.clip_text = true
-		button.mouse_filter = Control.MOUSE_FILTER_STOP
+		button.mouse_filter = (
+			Control.MOUSE_FILTER_STOP
+		)
 		button.pressed.connect(
 			cast_ability.bind(slot)
 		)
@@ -201,7 +213,9 @@ func screen_safe_to_viewport(
 		* physical_safe
 	)
 
-	var safe := visible.intersection(logical_safe)
+	var safe := visible.intersection(
+		logical_safe
+	)
 
 	if safe.has_area():
 		return safe
@@ -212,20 +226,25 @@ func layout_ability_ui() -> void:
 	if not ability_ui_valid():
 		return
 
-	# Build 91.7:
-	# The external layout module is the single
+	# BattleHUDLayout91 is the primary
 	# authority for ability panel positioning.
 
-	var layout_manager := get_tree().current_scene.get_node_or_null(
-		"BattleHUDLayout91"
+	var layout_manager := (
+		get_tree().current_scene.get_node_or_null(
+			"BattleHUDLayout91"
+		)
 	)
 
 	if layout_manager != null:
-		if layout_manager.has_method("_update_layout"):
-			layout_manager.call("_update_layout")
+		if layout_manager.has_method(
+			"_update_layout"
+		):
+			layout_manager.call(
+				"_update_layout"
+			)
 			return
 
-	# Fallback if the layout module is unavailable.
+	# Fallback when layout module is absent.
 	var safe := ability_safe_rect()
 	var margin := 12.0
 	var available := safe.grow(-margin)
@@ -233,7 +252,9 @@ func layout_ability_ui() -> void:
 	if not available.has_area():
 		return
 
-	var minimum := ability_panel.get_combined_minimum_size()
+	var minimum := (
+		ability_panel.get_combined_minimum_size()
+	)
 
 	var desired := Vector2(
 		maxf(320.0, minimum.x),
@@ -249,7 +270,9 @@ func layout_ability_ui() -> void:
 	)
 
 	ability_panel.size = desired
-	ability_panel.scale = Vector2.ONE * factor
+	ability_panel.scale = (
+		Vector2.ONE * factor
+	)
 	ability_panel.position = (
 		available.end - desired * factor
 	)
@@ -281,7 +304,9 @@ func begin_battle() -> void:
 		commander_panel.hide()
 
 	if is_instance_valid(ability_feedback):
-		ability_feedback.text = "KOMUTAN YETENEKLERI"
+		ability_feedback.text = (
+			"KOMUTAN YETENEKLERİ"
+		)
 
 	update_ability_ui()
 
@@ -289,8 +314,10 @@ func cast_ability(slot: int) -> void:
 	if abilities.cast(self, slot):
 		if is_instance_valid(ability_feedback):
 			ability_feedback.text = (
-				str(abilities.definition(slot)["name"])
-				+ " kullanildi!"
+				str(
+					abilities.definition(slot)["name"]
+				)
+				+ " kullanıldı!"
 			)
 
 		update_panel()
@@ -313,9 +340,13 @@ func update_ability_ui() -> void:
 	ability_screen.show()
 	ability_panel.visible = fighting
 
-	for slot in range(ability_buttons.size()):
+	for slot in range(
+		ability_buttons.size()
+	):
 		var button := ability_buttons[slot]
-		var ability: Dictionary = abilities.definition(slot)
+		var ability: Dictionary = (
+			abilities.definition(slot)
+		)
 
 		var role := (
 			"ANA" if slot == 0 else "YARDIMCI"
@@ -331,10 +362,12 @@ func update_ability_ui() -> void:
 				role + "\nAktif yetenek yok"
 			)
 			button.tooltip_text = (
-				"Fatih, Halid veya Hasan Sabbah atayin."
+				"Fatih, Halid veya Hasan Sabbah atayın."
 			)
 		else:
-			var timer: float = abilities.remaining[slot]
+			var timer: float = (
+				abilities.remaining[slot]
+			)
 
 			button.text = (
 				role + " | "
@@ -344,16 +377,24 @@ func update_ability_ui() -> void:
 
 			var status := "HAZIR"
 
-			if abilities.active_time[slot] > 0.0:
+			if (
+				abilities.active_time[slot] > 0.0
+			):
 				status = (
-					"AKTIF %d sn"
-					% ceili(abilities.active_time[slot])
+					"AKTİF %d sn"
+					% ceili(
+						abilities.active_time[slot]
+					)
 				)
 
-			elif not abilities.pending[slot].is_empty():
+			elif not abilities.pending[
+				slot
+			].is_empty():
 				status = (
-					"ILK VURUS: %d birlik"
-					% abilities.pending[slot].size()
+					"İLK VURUŞ: %d birlik"
+					% abilities.pending[
+						slot
+					].size()
 				)
 
 			if timer > 0.0:
@@ -373,7 +414,9 @@ func update_ability_ui() -> void:
 			button.tooltip_text = (
 				abilities.commanders[slot]
 				+ "\n"
-				+ str(ability["description"])
+				+ str(
+					ability["description"]
+				)
 			)
 
 	layout_ability_ui()
