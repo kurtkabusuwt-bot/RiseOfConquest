@@ -5,7 +5,7 @@ var registry: Node
 func _ready() -> void:
     registry = Node.new()
     registry.name = "RuleRegistry102"
-    registry.set_script(load("res://build102/build102_rule_registry.gd"))
+    registry.set_script(load("res://build102_rule_registry.gd"))
     add_child(registry)
     print("Build 102 registry loaded: ", registry.get_rule_count(), " rules")
 
