@@ -1,8 +1,8 @@
 
 extends "res://main.gd"
 
-# RISE OF CONQUEST - BUILD 93.0
-# CONSTRUCTION VALIDATION AND CONFIRMATION
+# RISE OF CONQUEST - BUILD 93.1
+# LIVE BUILDING POSITION VALIDATION
 # Godot 4.4.1 / Android
 
 const BUILD_LIMIT_61 := 47.0
@@ -31,8 +31,7 @@ func zoom_camera(delta: float) -> void:
 	else:
 		camera_distance = clampf(
 			camera_distance + delta,
-			12.0,
-			CAMERA_MAX_61
+			12.0, CAMERA_MAX_61
 		)
 
 	update_camera()
@@ -58,38 +57,36 @@ func construction_check(
 
 	var interaction := get_node_or_null("CityInteraction")
 
-	if interaction != null and interaction.has_method("get_buildings"):
-		var buildings: Array = interaction.get_buildings()
+	if interaction == null:
+		return "Bina kontrol sistemi hazir degil."
 
-		for building in buildings:
-			if not is_instance_valid(building):
-				continue
+	if not interaction.has_method("get_buildings"):
+		return "Bina kontrol sistemi hazir degil."
 
-			var other_kind := str(
-				interaction.building_kind(building)
-			)
+	var buildings: Array = interaction.get_buildings()
 
-			var spacing := construction_spacing(
-				kind, other_kind
-			)
+	for building in buildings:
+		if not is_instance_valid(building):
+			continue
 
-			var distance := Vector2(
-				position.x - building.position.x,
-				position.z - building.position.z
-			).length()
+		var other_kind := str(
+			interaction.building_kind(building)
+		)
 
-			if distance < spacing:
-				return "Bina cok yakin. Baska konum sec."
+		var spacing := construction_spacing(
+			kind, other_kind
+		)
 
-	# Existing occupied cells are also checked.
-	for cell in occupied:
 		var distance := Vector2(
-			position.x, position.z
-		).distance_to(Vector2(cell))
+			position.x - building.global_position.x,
+			position.z - building.global_position.z
+		).length()
 
-		if distance < 4.5:
-			return "Bu alan dolu."
+		if distance < spacing:
+			return "Bina cok yakin. Baska konum sec."
 
+	# Old occupied cells are intentionally not used here.
+	# Actual building positions are authoritative after moves.
 	return ""
 
 func choose_building(kind: String) -> void:
@@ -208,6 +205,30 @@ func _pay_construction_cost(kind: String) -> void:
 		"Kule":
 			coins -= 150
 
+func _sync_occupied_cells() -> void:
+	var interaction := get_node_or_null("CityInteraction")
+
+	if interaction == null:
+		return
+
+	if not interaction.has_method("get_buildings"):
+		return
+
+	occupied.clear()
+
+	for building in interaction.get_buildings():
+		if not is_instance_valid(building):
+			continue
+
+		var position := building.global_position
+
+		occupied.append(
+			Vector2i(
+				roundi(position.x),
+				roundi(position.z)
+			)
+		)
+
 func confirm_construction() -> void:
 	if not construction_pending:
 		status = "Once bina konumu sec."
@@ -242,10 +263,7 @@ func confirm_construction() -> void:
 		update_ui()
 		return
 
-	# Charge only after validation and confirmation.
 	_pay_construction_cost(kind)
-
-	# Create at the exact confirmed world position.
 	create_building(kind, position)
 
 	buildings_saved.append({
@@ -254,6 +272,7 @@ func confirm_construction() -> void:
 		"z": int(position.z)
 	})
 
+	_sync_occupied_cells()
 	clear_construction_pending()
 
 	save_game(false)
