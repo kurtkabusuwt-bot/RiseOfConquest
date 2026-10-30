@@ -1,5 +1,5 @@
 
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://main_extended_60.gd" id="1"]
 [ext_resource type="Script" path="res://conquest_14.gd" id="2"]
@@ -13,6 +13,7 @@
 [ext_resource type="Script" path="res://city_life_80.gd" id="10"]
 [ext_resource type="Script" path="res://ottoman_cityhall_preview.gd" id="11"]
 [ext_resource type="Script" path="res://city_interaction.gd" id="12"]
+[ext_resource type="Script" path="res://hero_menu.gd" id="13"]
 
 [node name="RiseOfConquest" type="Node3D"]
 script = ExtResource("1")
@@ -49,3 +50,6 @@ script = ExtResource("11")
 
 [node name="CityInteraction" type="Node" parent="."]
 script = ExtResource("12")
+
+[node name="HeroMenu" type="CanvasLayer" parent="."]
+script = ExtResource("13")
