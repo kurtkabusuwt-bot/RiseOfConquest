@@ -1,18 +1,3 @@
-GitHub’da Build #88.1’i korumak için dosyaları yeni codex/build-89-1-unit-ai branch’ine kaydet.
-
-Aktarım sırası:
-
-Sıra	Dosya	Durum
-
-1	war_ai_89.gd	Yeni
-2	war_combat_40.gd	Güncellendi
-3	war_conquest_31.gd	Güncellendi
-4	tests/test_build_89.gd	Yeni
-5	.github/workflows/godot-tests.yml	Güncellendi
-6	BUILD_89_1.md	Yeni
-
-
-İlk dosya: war_ai_89.gd — tam içerik:
 
 extends RefCounted
 
