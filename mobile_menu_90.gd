@@ -1,7 +1,7 @@
 
 extends CanvasLayer
 
-# RISE OF CONQUEST - BUILD 93.9
+# RISE OF CONQUEST - BUILD 94.5
 # RESPONSIVE MOBILE MENU
 # Godot 4.4.1 / Android
 
@@ -21,9 +21,10 @@ var action_list: VBoxContainer
 var confirm_bar: PanelContainer
 var confirm_button: Button
 var confirm_hint: Label
+var confirm_cancel: Button
+
 var current_tab := ""
 var navigation_buttons: Array[Button] = []
-var confirm_cancel: Button
 var last_screen_size := Vector2.ZERO
 
 func _ready() -> void:
@@ -128,13 +129,13 @@ func _make_button(
 
 func _build_interface() -> void:
 	root = Control.new()
+	add_child(root)
 	root.set_anchors_and_offsets_preset(
 		Control.PRESET_FULL_RECT
 	)
 	root.mouse_filter = (
 		Control.MOUSE_FILTER_IGNORE
 	)
-	add_child(root)
 
 	_build_bottom_bar()
 	_build_confirm_bar()
@@ -312,9 +313,6 @@ func _update_layout() -> void:
 	action_panel.offset_left = margin
 	action_panel.offset_right = -margin
 	action_panel.offset_top = 96.0
-	action_panel.offset_bottom = (
-		-bottom_height - 2.0 * margin
-	)
 
 	var compact := size.x < 520.0
 
@@ -333,19 +331,40 @@ func _update_layout() -> void:
 		confirm_cancel.custom_minimum_size = (
 			Vector2(68, 46)
 		)
+	else:
+		confirm_hint.add_theme_font_size_override(
+			"font_size", 12
+		)
+		confirm_button.custom_minimum_size = (
+			Vector2(95, 48)
+		)
+		confirm_cancel.custom_minimum_size = (
+			Vector2(75, 48)
+		)
+
+	_update_panel_visibility()
 
 func _update_panel_visibility() -> void:
 	if not is_instance_valid(action_panel):
 		return
 
-	if action_panel.visible and confirm_bar.visible:
-		action_panel.offset_bottom = (
-			-160.0
-		)
-	else:
-		action_panel.offset_bottom = (
-			-84.0
-		)
+	if not is_instance_valid(confirm_bar):
+		return
+
+	var bottom_height := 68.0
+	if last_screen_size.x < 520.0:
+		bottom_height = 64.0
+
+	var margin := 8.0
+	var reserve := bottom_height + 2.0 * margin
+
+	if confirm_bar.visible:
+		var confirm_height := 74.0
+		if last_screen_size.x < 520.0:
+			confirm_height = 72.0
+		reserve += confirm_height + margin
+
+	action_panel.offset_bottom = -reserve
 
 func _confirm_construction() -> void:
 	if is_instance_valid(game):
